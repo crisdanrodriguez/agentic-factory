@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "fixture": "synthetic-configuration-only",
+  "workItem": {
+    "id": "synthetic-ml-task",
+    "ownerId": "synthetic-owner",
+    "projectId": "synthetic-ml-project",
+    "revision": "1",
+    "objective": "Investigate a baseline versus a small neural network on synthetic data, regardless of which performs better.",
+    "context": "Synthetic configuration example; no work has been executed.",
+    "origin": {
+      "kind": "local"
+    }
+  },
+  "profile": {
+    "id": "ml-research",
+    "environment": {
+      "language": "python",
+      "version": "3.12",
+      "fingerprint": "synthetic-python-environment-1"
+    },
+    "requiredCapabilities": [
+      "agent.edit",
+      "job.cpu",
+      "artifact.private",
+      "verify.command"
+    ],
+    "deliverables": [
+      "source",
+      "report",
+      "experiment-artifacts"
+    ],
+    "checks": [
+      {
+        "id": "software-tests",
+        "layer": "software",
+        "required": true,
+        "command": [
+          "python",
+          "-m",
+          "unittest"
+        ]
+      },
+      {
+        "id": "methodology-review",
+        "layer": "methodology",
+        "required": true,
+        "command": [
+          "python",
+          "verify_protocol.py"
+        ]
+      },
+      {
+        "id": "findings-review",
+        "layer": "findings",
+        "required": true,
+        "command": [
+          "python",
+          "verify_report.py"
+        ]
+      }
+    ]
+  },
+  "plan": {
+    "id": "synthetic-ml-plan",
+    "revision": "1",
+    "policyRevision": "bootstrap-policy-1",
+    "workItemId": "synthetic-ml-task",
+    "sourceSnapshot": "synthetic-source-1",
+    "scope": "Specify a bounded CPU comparison and preserve all findings in private artifacts and a report.",
+    "exclusions": [
+      "No hosting, remote repository, publication, or real execution in bootstrap."
+    ],
+    "dependencies": [],
+    "objectiveKind": "investigation",
+    "criteria": [
+      "Compare the baseline and neural network under the frozen protocol; retain unfavorable results and report limitations."
+    ],
+    "budget": {
+      "maxTechnicalAttempts": 3,
+      "maxVariants": 2,
+      "maxDurationSeconds": 300,
+      "maxMemoryMb": 1024,
+      "maxArtifactBytes": 10485760
+    },
+    "deliveryActions": [],
+    "research": {
+      "protocolRevision": "synthetic-protocol-1",
+      "datasetVersion": "synthetic-data-1",
+      "splitVersion": "synthetic-split-1",
+      "parametersDigest": "synthetic-parameters-1",
+      "baseline": "Constant-class predictor",
+      "primaryMetric": "accuracy",
+      "seeds": [
+        17
+      ],
+      "stoppingRule": "One baseline and one neural-network variant; stop at the time limit. No test-set tuning."
+    }
+  },
+  "policy": {
+    "requirePlanApproval": true,
+    "requireEvidence": true,
+    "requiredChecks": [
+      "software-tests",
+      "methodology-review",
+      "findings-review"
+    ]
+  }
+}

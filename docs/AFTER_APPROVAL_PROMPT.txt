@@ -1,0 +1,11 @@
+The AF-001/AF-002/AF-003 implementation plan you just presented is approved, provided it stays within the already reviewed scope.
+
+Implement only AF-001, AF-002, and AF-003, in dependency order. Use English for all project-authored files and engineering materials. Preserve the planning documents and avoid unrelated changes.
+
+The initial scaffold must support valid software-general and ml-research configurations without mandatory GitHub, Telegram, URLs, pull requests, deployment, or web UI. Telegram is documented as an optional early future control channel, not implemented now.
+
+Create real lint, typecheck, test, and build scripts, with tests that terminate rather than remain in watch mode. Run the checks and provide the exact command outputs or a precise failure explanation. Include tests that reject attempts to disable required policy or to claim success after a missing required verification.
+
+Do not implement AF-004 or later tickets. Do not create a Telegram bot/token, access outside projects/organizations, install a GitHub App, request credentials, provision services, publish, commit, push, merge, or deploy.
+
+Finish with: summary of files changed; verification commands/results; two profile validation demonstrations; any limitations; pending decisions. Then stop for review.

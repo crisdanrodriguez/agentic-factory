@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "fixture": "synthetic-configuration-only",
+  "workItem": {
+    "id": "synthetic-software-task",
+    "ownerId": "synthetic-owner",
+    "projectId": "synthetic-software-project",
+    "revision": "1",
+    "objective": "Deliver a local text counting utility and report.",
+    "context": "Synthetic configuration example; no work has been executed.",
+    "origin": {
+      "kind": "local"
+    }
+  },
+  "profile": {
+    "id": "software-general",
+    "environment": {
+      "language": "python",
+      "version": "3.12",
+      "fingerprint": "synthetic-python-environment-1"
+    },
+    "requiredCapabilities": [
+      "agent.edit",
+      "artifact.private",
+      "verify.command"
+    ],
+    "deliverables": [
+      "source",
+      "report"
+    ],
+    "checks": [
+      {
+        "id": "software-tests",
+        "layer": "software",
+        "required": true,
+        "command": [
+          "python",
+          "-m",
+          "unittest"
+        ]
+      }
+    ]
+  },
+  "plan": {
+    "id": "synthetic-software-plan",
+    "revision": "1",
+    "policyRevision": "bootstrap-policy-1",
+    "workItemId": "synthetic-software-task",
+    "sourceSnapshot": "synthetic-source-1",
+    "scope": "Specify a local utility, its tests, and usage report.",
+    "exclusions": [
+      "No hosting, remote repository, publication, or real execution in bootstrap."
+    ],
+    "dependencies": [],
+    "objectiveKind": "delivery",
+    "criteria": [
+      "The proposed utility has deterministic counting tests and local usage instructions."
+    ],
+    "budget": {
+      "maxTechnicalAttempts": 3,
+      "maxVariants": 1,
+      "maxDurationSeconds": 60,
+      "maxMemoryMb": 256,
+      "maxArtifactBytes": 1048576
+    },
+    "deliveryActions": []
+  },
+  "policy": {
+    "requirePlanApproval": true,
+    "requireEvidence": true,
+    "requiredChecks": [
+      "software-tests"
+    ]
+  }
+}

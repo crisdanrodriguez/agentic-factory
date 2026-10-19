@@ -1,0 +1,30 @@
+We are developing Agentic Factory using MASTER PLAN REVISION 2.1 (Telegram Priority Amendment), in English. It is an open-source, self-hosted tool for developing projects and running computational experiments, not exclusively web applications. This first assignment is NOT to build the entire platform.
+
+Read AGENTS.md, docs/MASTER_PLAN.md, docs/BACKLOG.md, and docs/CHANGES_TELEGRAM_PRIORITY.md. If the planning package is still in another folder, locate these same files before implementing anything. Inspect the existing repository and preserve existing work; do not overwrite it without explanation.
+
+Implement only AF-001, AF-002, and AF-003, in that order. Do not start AF-004 or any other ticket. If these tickets were partially implemented using the previous plan, audit and correct only the differences introduced by revision 2.1 and the English-language convention.
+
+LANGUAGE
+Use English for all project-authored files and engineering materials: filenames, documentation, prompts, code identifiers/comments, test descriptions, CLI help/errors, logs, and implementation reports. Follow the limited data-integrity exceptions in AGENTS.md. Keep all internal document references consistent with the English filenames.
+
+OBJECTIVE
+Leave the project defined and buildable, with a minimal CLI, contracts, and configuration validation. Two fixtures must represent software-general and ml-research without mandatory hosting, pull requests, URLs, or deployment. This increment does not yet run real experiments or make provider calls.
+
+SCOPE
+- Vision, boundaries, architecture, privacy, threat model, and pending decisions. Document Telegram as the first external control channel to implement **after** the persistent engine and local WorkItem intake. It must not become a mandatory dependency or source of truth.
+- A modular TypeScript monolith with verified and pinned versions, a lockfile, and real lint/typecheck/test/build scripts for the Factory.
+- src/core, src/ports, src/adapters, src/runtime, and src/cli, creating only necessary files.
+- A minimal CLI with help and configuration validation; understandable messages in English.
+- Small types for WorkItem, ProjectPlan, ProjectProfile, AgentRuntime, JobExecutor, ArtifactStore, and VerificationResult. Define ticket/repository/CI/delivery-action interfaces only where needed to demonstrate optionality. Do not design oversized contracts or implement future adapters.
+- Separate technical execution status, verification, objective assessment, and human decisions.
+- Profile fixtures with different deliverables and criteria; ml-research accepts local input and artifacts/a report without a remote repository.
+- Deterministic tests: absence of deployment is valid when it does not apply; a required step cannot be skipped; project policies cannot weaken global policies; missing capabilities produce an explicit error.
+- Basic CI without secrets or deployment, only if no equivalent exists. This is within bootstrap scope and requires human review.
+
+RESTRICTIONS
+Do not build Telegram bots, pair accounts, create Telegram tokens, GitHub Apps, real integrations, a dashboard, SaaS, working agents, GPU infrastructure, remote runners, cloud services, complete MLflow/DVC integrations, a marketplace, or a universal workflow engine. Do not access organizations or business data. Do not publish to npm or claim that a public command already exists. Do not purchase or provision resources. Do not choose a license on my behalf; leave it as an explicit decision.
+
+Do not impose Node.js, browser tests, or previews on every target project. Do not require metric improvement to consider a study valid when its objective is investigation. Do not mark an unmet performance objective as met.
+
+WORKFLOW AND HANDOFF
+First present a brief plan and the files to change. If implementation has not already been approved, wait for that approval before editing files or installing dependencies. Once approved, implement only the stated scope. Run the checks and report actual commands, results, limitations, and pending decisions in English. Make the normal test command finish rather than remain in watch mode. When AF-001 through AF-003 satisfy their acceptance criteria, stop. AF-029 and AF-030 are prioritized later tickets, not part of this increment. Do not commit, push, merge, publish, or deploy; leave the changes ready for human review. Do not proceed to AF-004 automatically.

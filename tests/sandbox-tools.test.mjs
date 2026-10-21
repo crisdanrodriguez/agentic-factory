@@ -130,3 +130,27 @@ for (const [description, output, valid] of [
     else assert.match(result.stderr, /Missing embedded Go version|Malformed embedded Go build information/);
   });
 }
+
+// Component map captured from Docker in run 39578840617; all other identities stay fixed.
+for (const representation of ['2.4.2', 'v2.4.2', 'v2.4.1', 'v2.4.3', 'v2.4.20', 'v2.4.2-rc.1',
+  '2.4.2+dirty', 'v2.4.2+build', 'vv2.4.2', 'V2.4.2', ' v2.4.2', 'v2.4.2 ', 'v2.4.2\n', '', null]) {
+  test(`Python API preflight containerd representation: ${JSON.stringify(representation)}`, () => {
+    const components = { Engine: '29.9.2', containerd: representation, 'docker-init': '0.19.0', runc: '1.5.2' };
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys,json; sys.path.insert(0, "scripts"); from sandbox_runtime_version import require_api_components; require_api_components(json.loads(sys.argv[1]))',
+      JSON.stringify(components)], { encoding: 'utf8' });
+    assert.equal(result.status, ['2.4.2', 'v2.4.2'].includes(representation) ? 0 : 1, result.stderr);
+    if (result.status !== 0) assert.match(result.stderr, /Active component mismatch: containerd/);
+  });
+}
+for (const component of ['Engine', 'runc']) {
+  test(`Python API preflight does not normalize ${component}`, () => {
+    const components = { Engine: '29.9.2', containerd: 'v2.4.2', 'docker-init': '0.19.0', runc: '1.5.2' };
+    components[component] = 'v' + components[component];
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys,json; sys.path.insert(0, "scripts"); from sandbox_runtime_version import require_api_components; require_api_components(json.loads(sys.argv[1]))',
+      JSON.stringify(components)], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.ok(result.stderr.includes(`Active component mismatch: ${component}`));
+  });
+}

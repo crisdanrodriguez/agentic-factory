@@ -45,7 +45,7 @@ export async function runtimePreflight(api: DockerApi): Promise<'arm64' | 'amd64
   const runc = components.find((c) => c.Name === 'runc')?.Version;
   const containerd = components.find((c) => c.Name === 'containerd')?.Version;
   const supportedEngine = engine === '29.9.2' || (details.Architecture === 'aarch64' && engine === '29.9.1');
-  if (!supportedEngine || runc !== '1.5.2' || containerd !== '2.4.2')
+  if (!supportedEngine || runc !== '1.5.2' || (containerd !== '2.4.2' && containerd !== 'v2.4.2'))
     throw new Error('Unsupported Docker security baseline; review runtime versions before execution.');
   if (!details.SecurityOptions.some((s) => s.startsWith('name=seccomp')) || !details.SecurityOptions.includes('name=cgroupns'))
     throw new Error('Required seccomp and cgroup namespace controls are unavailable.');

@@ -79,10 +79,13 @@ test('sandbox native AMD64 preflight accepts only the exact reviewed component c
     constructor(private readonly engine: string, private readonly containerd: string, private readonly runc: string) { super('/synthetic.sock'); }
     override async json(_method: string, path: string): Promise<unknown> {
       return path === '/info' ? { OSType: 'linux', Architecture: 'x86_64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=seccomp', 'name=cgroupns'] } :
-        { Components: [{ Name: 'Engine', Version: this.engine }, { Name: 'containerd', Version: this.containerd }, { Name: 'runc', Version: this.runc }] };
+        { Components: [{ Name: 'docker-init', Version: '0.19.0' }, { Name: 'Engine', Version: this.engine }, { Name: 'containerd', Version: this.containerd }, { Name: 'runc', Version: this.runc }] };
     }
   }
   assert.equal(await runtimePreflight(new Fixture('29.9.2', '2.4.2', '1.5.2')), 'amd64');
+  assert.equal(await runtimePreflight(new Fixture('29.9.2', 'v2.4.2', '1.5.2')), 'amd64');
+  for (const invalid of ['v2.4.1', 'v2.4.3', 'v2.4.20', 'v2.4.2-rc.1', '2.4.2+dirty', 'v2.4.2+build', 'vv2.4.2', 'V2.4.2', ' v2.4.2', 'v2.4.2 ', 'v2.4.2\n'])
+    await assert.rejects(runtimePreflight(new Fixture('29.9.2', invalid, '1.5.2')));
   for (const values of [['29.9.1', '2.4.2', '1.5.2'], ['29.9.3', '2.4.2', '1.5.2'], ['29.9.2', '', '1.5.2'], ['29.9.2', '2.4.1', '1.5.2'], ['29.9.2', '2.4.2', '1.5.1']] as const)
     await assert.rejects(runtimePreflight(new Fixture(values[0], values[1], values[2])));
 });

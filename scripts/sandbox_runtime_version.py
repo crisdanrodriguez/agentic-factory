@@ -26,3 +26,10 @@ def require_reviewed_go_build(component, version, go_version):
     reviewed = {'Engine': ('29.9.2', 'go1.26.10'), 'containerd': ('2.4.2', 'go1.27.3')}
     if component not in reviewed or (version, go_version) != reviewed[component]:
         raise RuntimeError('Unreviewed component/Go TLS build combination')
+
+
+def require_api_components(components):
+    reviewed = {'Engine': ('29.9.2',), 'containerd': ('2.4.2', 'v2.4.2'), 'runc': ('1.5.2',)}
+    for name, representations in reviewed.items():
+        if components.get(name) not in representations:
+            raise RuntimeError(f'Active component mismatch: {name}')

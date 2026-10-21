@@ -141,3 +141,11 @@ Run [39577933614](https://github.com/crisdanrodriguez/agentic-factory/actions/ru
 The correction adds strict embedded-header parsing, exact component/build matching and active executable file-identity verification. No package versions, migrations, provider contracts, dependency patches, TLS settings, image digests or mandatory CI steps change. Adjacent CLI and Docker API comparisons remain exact; no automatic normalization or future-version acceptance was introduced.
 
 Local verification: `npm run lint`, `npm run typecheck`, `npm run build`, and dependency verification exit 0; `npm test` passes 65/65, `npm run test:deps` passes 7/7, and `npm run test:sandbox-tools` passes 45/45, all with zero failures/skips/cancellations. The tooling suite includes 21 new exact-combination and malformed/missing build-header cases. Native Ubuntu preflight and resource tests require the hosted run; macOS ARM64 remains outstanding. Historical results above are retained as checkpoints.
+
+## Docker API containerd representation correction — 2026-10-21
+
+Run [39578840617](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39578840617) confirmed the reviewed embedded Go 1.27.3 build, then failed because Docker's component map contained `containerd: v2.4.2`. Both Python CI preflight and TypeScript broker preflight now accept exactly `2.4.2` or `v2.4.2`. This is an explicit representation allowlist, not generic prefix stripping or a version-range policy. Prereleases, suffixes, whitespace, malformed and different versions fail. Regression fixtures reproduce the observed Engine 29.9.2/containerd v2.4.2/runc 1.5.2/docker-init 0.19.0 map.
+
+Adjacent Engine, runc, package and component-specific Go checks remain unchanged. The CLI version parser already verifies its separately reviewed prefixed format. No TLS, registry, image digest, filesystem or isolation assertion is removed or relaxed.
+
+Local checks: lint, strict typecheck, build, dependency verification and whitespace checks passed; unit tests 65/65, dependency tests 7/7, tooling tests 62/62. The expanded TypeScript preflight case and 17 new Python API cases cover acceptance and rejection. The local Docker socket is absent, so Docker-backed database and sandbox suites cannot be rerun locally. Hosted verification remains required; macOS ARM64 remains outstanding.

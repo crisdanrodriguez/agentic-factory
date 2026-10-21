@@ -3,7 +3,7 @@ import json
 import pathlib
 import platform
 import subprocess
-from sandbox_runtime_version import require_containerd_version, embedded_go_version, require_reviewed_go_build
+from sandbox_runtime_version import require_containerd_version, embedded_go_version, require_reviewed_go_build, require_api_components
 
 
 def command(*args):
@@ -43,8 +43,7 @@ docker = ['docker', '--host', 'unix:///var/run/docker.sock']
 version = json.loads(command(*docker, 'version', '--format', '{{json .Server}}'))
 components = {item['Name']: item['Version'] for item in version['Components']}
 print('ACTIVE_COMPONENTS ' + json.dumps(components, sort_keys=True), flush=True)
-for name, expected in {'Engine': '29.9.2', 'containerd': '2.4.2', 'runc': '1.5.2'}.items():
-    require(components.get(name) == expected, f'Active component mismatch: {name}')
+require_api_components(components)
 require_reviewed_go_build('Engine', components['Engine'], version['GoVersion'])
 info = json.loads(command(*docker, 'info', '--format', '{{json .}}'))
 require(info['OSType'] == 'linux' and info['Architecture'] == 'x86_64', 'Wrong daemon platform')

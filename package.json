@@ -5,17 +5,36 @@
   "license": "MIT",
   "type": "module",
   "description": "Local configuration and contract bootstrap for Agentic Factory",
-  "engines": { "node": "24.22.0", "npm": "11.9.0" },
+  "engines": {
+    "node": "24.22.0",
+    "npm": "11.9.0"
+  },
   "packageManager": "npm@11.9.0",
   "scripts": {
     "lint": "eslint src tests --max-warnings=0",
-    "typecheck": "tsc --noEmit",
-    "test": "tsc --project tsconfig.test.json && node --test --test-reporter=spec .test-build/tests/*.test.js",
-    "build": "tsc --project tsconfig.build.json"
+    "typecheck": "npm run deps:check && tsc --noEmit",
+    "test": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-reporter=spec .test-build/tests/*.test.js",
+    "build": "npm run deps:check && tsc --project tsconfig.build.json",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:setup-local": "node scripts/setup-local-database.mjs",
+    "test:compatibility": "node scripts/check-database-compatibility.mjs",
+    "test:state": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/state.test.js .test-build/tests/database/synthetic-isolation.test.js",
+    "db:setup-queue": "node scripts/setup-local-queue.mjs",
+    "test:queue": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/queue.test.js .test-build/tests/database/recovery.test.js",
+    "deps:patch": "node scripts/apply-dependency-patches.mjs",
+    "deps:check": "node scripts/apply-dependency-patches.mjs --check",
+    "test:deps": "node --test --test-reporter=spec tests/dependency-patch.test.mjs",
+    "test:simulations": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/simulations/*.test.js"
   },
-  "dependencies": { "zod": "4.6.7" },
+  "dependencies": {
+    "node-pg-migrate": "9.0.0",
+    "pg": "8.23.1",
+    "pg-boss": "12.38.0",
+    "zod": "4.6.7"
+  },
   "devDependencies": {
     "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
     "eslint": "10.13.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.2"

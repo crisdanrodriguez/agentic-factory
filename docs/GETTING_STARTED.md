@@ -1,6 +1,6 @@
 # Getting Started — From Zero to the First Reviewed Increment
 
-AF-001–003 now provide a local configuration-validation scaffold. All project-authored files are in English. The original planning instructions below are preserved as background; use the current bootstrap instructions first. No full Factory workflow runs yet.
+AF-001–003 are accepted and merged and provide a local configuration-validation scaffold. The unmerged Milestone 2 working tree implements locally verified state, queue, and synthetic profile simulations; see `MILESTONE_2_VERIFICATION.md`. The accepted declaration patch is still required. Local PostgreSQL setup is documented in `DATABASE.md`. All project-authored files are in English. The original planning instructions below are preserved as background; use the current bootstrap instructions first. Only synthetic workflows execute; real target-project execution is not implemented.
 
 ## Current bootstrap installation and checks
 
@@ -8,6 +8,8 @@ Use the tested Node.js 24 LTS version `24.22.0` (also recorded in `.node-version
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
+npm run deps:patch
+npm run test:deps
 npm run lint
 npm run typecheck
 npm test
@@ -16,6 +18,8 @@ node dist/cli/index.js --help
 node dist/cli/index.js validate fixtures/software-general.json
 node dist/cli/index.js validate fixtures/ml-research.json
 ```
+
+For database-backed tests, follow `DATABASE.md` and run `npm run test:state`, `npm run test:queue`, and `npm run test:simulations` sequentially. All simulation outputs are synthetic.
 
 The test command compiles tests and invokes Node's test runner without watch mode. The build writes `dist/`; tests write `.test-build/`. Both directories are ignored. No Python installation, database, Docker, bot token, or provider credentials are required for these checks. The fixture commands are descriptions and are never executed.
 

@@ -1,6 +1,6 @@
 # Agentic Factory — Master Plan, Revision 2.1 (Telegram Priority Amendment)
 
-**Status:** proposed specification; this package does not contain an executable Factory. Revision 2 remains the product baseline; 2.1 changes Telegram implementation priority only.  
+**Status:** revision 2.1 specification; AF-001–003 accepted and merged in `4a0ce53`. Milestone 2 (AF-004–006) is implemented and locally verified, pending human review; see `MILESTONE_2_VERIFICATION.md`. The accepted baseline provides configuration validation, not a complete executing Factory. Revision 2 remains the product baseline; 2.1 changes Telegram implementation priority only.
 **Guiding change:** develop projects and experiments with verifiable deliverables, rather than exclusively developing web applications or processing tickets that must end in a pull request or deployment.  
 **Document scope:** supersedes the previous revision for work not yet implemented. It does not establish that repositories, accounts, or infrastructure have been changed.  
 **Language:** All project-authored files and engineering materials must be in English, as defined in `AGENTS.md`. The original 28 ticket IDs and project scope remain; AF-029 and AF-030 add a Telegram control channel. See `docs/CHANGES_TELEGRAM_PRIORITY.md`.

@@ -88,7 +88,7 @@ The sandbox job uses an isolated GitHub-hosted `ubuntu-24.04` AMD64 runner. It d
 
 The script uses Docker's HTTPS APT repository in an isolated source/list directory, pins the Docker signing-key fingerprint, requires authenticated repository metadata, and downloads exact versions through APT's hash verification. Package origins, archive SHA-256 hashes and installed versions are printed. It checks package file integrity and refuses an existing container workload before replacing runner packages. No convenience installer, mutable version fallback, or insecure repository is used. A missing package, changed signing key, unexpected component or unavailable control fails the job and requires review.
 
-`verify-sandbox-linux.py` checks active systemd process executables, Docker-reported Engine/containerd/runc versions, packaged binary versions, daemon and containerd Go TLS builds, default runc, cgroup v2 CPU/memory/PID controls, built-in seccomp, AppArmor, cgroup namespaces, and registry security settings. The reviewed expectations are Engine 29.9.2, containerd 2.4.2, runc 1.5.2, and Go 1.26.10 for registry clients. These are required expectations, not claimed measurements from an executed Ubuntu job. The GitHub runner's Go inspection tool is required; missing tooling fails closed.
+`verify-sandbox-linux.py` checks active systemd process executables, Docker-reported Engine/containerd/runc versions, packaged binary versions, daemon and containerd Go TLS builds, default runc, cgroup v2 CPU/memory/PID controls, built-in seccomp, AppArmor, cgroup namespaces, and registry security settings. The reviewed expectations are Engine 29.9.2, containerd 2.4.2, runc 1.5.2, Go 1.26.10 for Engine 29.9.2, and Go 1.27.3 for the pinned containerd 2.4.2 package. These are required expectations, not claimed measurements from an executed Ubuntu job. The GitHub runner's Go inspection tool is required; missing tooling fails closed.
 
 Sources: [Docker Ubuntu installation](https://docs.docker.com/engine/install/ubuntu/), [official Noble AMD64 packages](https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/), [Engine 29 release/security notes](https://docs.docker.com/engine/release-notes/29/), and [runc advisories](https://github.com/opencontainers/runc/security/advisories). This pinned review is not a guarantee against future advisories; reassess it before changing versions or enabling a future runtime.
 
@@ -112,3 +112,17 @@ python3 scripts/cleanup-sandbox-ci.py
 The workflow sets `AF_DOCKER_SOCKET`, `AF_SANDBOX_IMAGE`, `AF_SANDBOX_TEST_ROOT` and `TMPDIR`; cleanup is a separate unconditional step, not a command chained after a successful test. Do not run the provisioning script on a persistent development or business host.
 
 Linux success establishes Linux AMD64 evidence only. macOS ARM64 retains its historical offline evidence and needs secure image preparation plus the full sandbox suite on an approved official Docker Desktop runtime before cross-platform completion can be claimed.
+
+
+### Explicit Go TLS build baseline
+
+The [Go release history](https://go.dev/doc/devel/release#go1.27.3) records crypto/x509 security fixes in both Go 1.27.3 and Go 1.26.10, released October 19, 2026. [Docker Engine 29.9.2 release notes](https://docs.docker.com/engine/release-notes/29/) identify the CVE-2026-111943 certificate-chain fix and Engine's Go 1.26.10 build. Following owner security review, the exact authorized combinations are:
+
+| Component | Exact version | Exact embedded/runtime Go version |
+|---|---|---|
+| Docker Engine | 29.9.2 | go1.26.10 |
+| containerd from `containerd.io=2.4.2-3~ubuntu.24.04~noble` | 2.4.2 | go1.27.3 |
+
+These branches are explicitly reviewed per component, not interchangeable or a generic minimum-version policy. Newer versions, Go 1.27.2, Go 1.26.9, custom builds and malformed/missing build metadata are rejected. Exact package pins and integrity checks run first. Active executable path and file identity must match the installed binary. The preflight parses the complete header produced by `go version -m /usr/bin/containerd`, which reads the binary's embedded build information rather than the inspection tool's own version. It prints the extracted version and checks the exact component/version/Go tuple. Docker API component versions and daemon GoVersion retain exact checks; the containerd CLI parser and runc checks are unchanged.
+
+This corrects the assumption in the historical checkpoint that both components must share Go 1.26.10. It does not itself establish that all later isolation and sandbox checks pass, and it does not complete macOS ARM64 validation.

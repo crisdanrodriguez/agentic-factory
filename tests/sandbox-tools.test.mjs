@@ -87,3 +87,46 @@ for (const [description, output, valid] of [
     if (!valid) assert.match(result.stderr, /Unreviewed containerd binary version or output format/);
   });
 }
+
+for (const [component, version, goVersion, valid] of [
+  ['Engine', '29.9.2', 'go1.26.10', true],
+  ['containerd', '2.4.2', 'go1.27.3', true],
+  ['Engine', '29.9.2', 'go1.26.9', false],
+  ['containerd', '2.4.2', 'go1.27.2', false],
+  ['Engine', '29.9.2', 'go1.27.3', false],
+  ['containerd', '2.4.2', 'go1.26.10', false],
+  ['containerd', '2.4.2', 'go1.26.9', false],
+  ['containerd', '2.4.2', 'go1.27.4', false],
+  ['containerd', '2.4.3', 'go1.27.3', false],
+  ['Engine', '29.9.3', 'go1.26.10', false],
+  ['unknown', '2.4.2', 'go1.27.3', false],
+]) {
+  test(`reviewed Go build: ${component} ${version} ${goVersion}`, () => {
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys; sys.path.insert(0, "scripts"); from sandbox_runtime_version import require_reviewed_go_build; require_reviewed_go_build(*sys.argv[1:])',
+      component, version, goVersion], { encoding: 'utf8' });
+    assert.equal(result.status, valid ? 0 : 1, result.stderr);
+    if (!valid) assert.match(result.stderr, /Unreviewed component\/Go TLS build combination/);
+  });
+}
+for (const [description, output, valid] of [
+  ['header', '/usr/bin/containerd: go1.27.3', true],
+  ['metadata', '/usr/bin/containerd: go1.27.3\n\tpath\tgithub.com/containerd/containerd/v2/cmd/containerd', true],
+  ['missing', '', false],
+  ['missing version', '/usr/bin/containerd:', false],
+  ['wrong binary', '/tmp/containerd: go1.27.3', false],
+  ['substring', '/usr/bin/containerd: go1.27.3 unexpected', false],
+  ['prerelease', '/usr/bin/containerd: go1.27.3rc1', false],
+  ['custom build', '/usr/bin/containerd: go1.27.3+custom', false],
+  ['development build', '/usr/bin/containerd: devel go1.27.3', false],
+  ['duplicate header', '/usr/bin/containerd: go1.27.3\n/usr/bin/containerd: go1.27.2', false],
+]) {
+  test(`embedded Go parser: ${description}`, () => {
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys; sys.path.insert(0, "scripts"); from sandbox_runtime_version import embedded_go_version; print(embedded_go_version(sys.argv[1], "/usr/bin/containerd"))', output],
+    { encoding: 'utf8' });
+    assert.equal(result.status, valid ? 0 : 1, result.stderr);
+    if (valid) assert.equal(result.stdout.trim(), 'go1.27.3');
+    else assert.match(result.stderr, /Missing embedded Go version|Malformed embedded Go build information/);
+  });
+}

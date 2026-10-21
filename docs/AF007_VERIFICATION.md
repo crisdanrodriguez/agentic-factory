@@ -132,3 +132,12 @@ The old `' 2.4.2 '` substring rejects the official `v2.4.2` token. The correctio
 Adjacent checks were reviewed: runc's exact first-line comparison passed in the failed job; Debian versions use exact equality; Docker API component versions and daemon GoVersion use exact equality. The containerd Go build-header check is separate and unchanged. Checks after the failing CLI assertion still need hosted evidence; no speculative version normalization was added elsewhere.
 
 Local correction checks: lint, strict typecheck, build and `git diff --check` exit 0; unit tests 65/65; dependency tests 7/7; sandbox tooling tests 24/24, including 15 new valid/invalid parser fixtures. Native Linux provisioning and sandbox execution cannot be validated on this macOS host. Earlier local PostgreSQL unavailability and macOS ARM64 secure-validation limitations remain unchanged. This correction does not establish Linux verification or full AF-007 completion.
+
+
+## Approved component-specific Go baseline correction — 2026-10-21
+
+Run [39577933614](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39577933614) confirmed the containerd CLI parser fix and literal version output, then stopped at the separate Go build gate. Core Engine checks and failure-path cleanup passed. The identical official package's embedded build version is Go 1.27.3; the owner approved that exact containerd build after reviewing the Go crypto/x509 fix shared with Go 1.26.10. See SANDBOX.md for source links and the exact component matrix.
+
+The correction adds strict embedded-header parsing, exact component/build matching and active executable file-identity verification. No package versions, migrations, provider contracts, dependency patches, TLS settings, image digests or mandatory CI steps change. Adjacent CLI and Docker API comparisons remain exact; no automatic normalization or future-version acceptance was introduced.
+
+Local verification: `npm run lint`, `npm run typecheck`, `npm run build`, and dependency verification exit 0; `npm test` passes 65/65, `npm run test:deps` passes 7/7, and `npm run test:sandbox-tools` passes 45/45, all with zero failures/skips/cancellations. The tooling suite includes 21 new exact-combination and malformed/missing build-header cases. Native Ubuntu preflight and resource tests require the hosted run; macOS ARM64 remains outstanding. Historical results above are retained as checkpoints.

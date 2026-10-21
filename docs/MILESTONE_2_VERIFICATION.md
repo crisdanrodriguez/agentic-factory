@@ -1,5 +1,7 @@
 # Milestone 2 verification — AF-004, AF-005, AF-006
 
+> Acceptance update (2026-10-21): AF-004–006 were accepted and merged in `2705aac`. The owner confirmed that GitHub Actions on main passed. The historical evidence and limitations below describe their original checkpoints; no hosted run URL or ID has been independently verified in this session.
+
 This report preserves the pre-review 89-test checkpoint. The four final-review corrections, updated acceptance mapping, CI coverage, and current 100-test results are recorded in [`MILESTONE_2_REVIEW_CORRECTIONS.md`](MILESTONE_2_REVIEW_CORRECTIONS.md). Statements below about local-only CI coverage describe the earlier checkpoint.
 
 ## Review status and scope

@@ -2,7 +2,7 @@
 
 ## Milestone 2 implementation status
 
-AF-001–003 are accepted and merged. AF-004–006 are implemented and locally verified, pending human review. PostgreSQL stores workflow and revision metadata; pg-boss owns durable claims, retries, and expiration; synthetic adapters exercise both profiles. The accepted declaration correction remains explicit and checksum-guarded. See `MILESTONE_2_VERIFICATION.md` and `DATABASE.md`. Bootstrap validation remains independent of the persistent simulation.
+AF-001–003 are accepted and merged. AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. PostgreSQL stores workflow and revision metadata; pg-boss owns durable claims, retries, and expiration; synthetic adapters exercise both profiles. The accepted declaration correction remains explicit and checksum-guarded. See `MILESTONE_2_VERIFICATION.md` and `DATABASE.md`. Bootstrap validation remains independent of the persistent simulation.
 
 
 The sections below distinguish current controls from future requirements. Durable simulation approval records exist; target execution isolation and end-user authentication do not.

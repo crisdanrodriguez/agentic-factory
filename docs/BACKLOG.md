@@ -1,9 +1,9 @@
 # Agentic Factory — Backlog, Revision 2.1 (Telegram Priority Amendment)
 
-**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 implemented and verified locally, pending human review. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. Later tickets remain unimplemented.
+**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`, with a successful main-branch GitHub Actions run confirmed by the owner. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. Later tickets remain unimplemented.
 AF-001 through AF-028 remain from revision 2. AF-029 and AF-030 are new Telegram tickets; all previous acceptance criteria are preserved. Numbering alone does not define execution order. See the stage table in the master plan.
 
-**Accepted first increment:** AF-001, AF-002, and AF-003. **Current approved increment:** AF-004, AF-005, and AF-006 only. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
+**Accepted first increment:** AF-001, AF-002, and AF-003. **Current approved increment:** AF-007 only; implementation and verification are in progress. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
 
 Web extensions and the nontechnical experience are separate roadmap branches. Telegram is an early optional input/control channel and does not block the first useful software and research workflows without messaging. AF-029 follows AF-023 and precedes GitHub/Codex adapter development; AF-030 follows the versioned approval engine in AF-012. If earlier implementations already exist, review their evidence before accepting or reopening a ticket.
 
@@ -55,7 +55,7 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 1  
 **Dependencies:** AF-003  
-**Status:** Implemented and verified locally; pending human review. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
+**Status:** Accepted and merged in `2705aac`; main-branch GitHub Actions success confirmed by the owner. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
 
 **Acceptance Criteria**
 
@@ -69,7 +69,7 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 1  
 **Dependencies:** AF-004  
-**Status:** Implemented and verified locally after the accepted dependency correction; pending human review. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
+**Status:** Accepted and merged in `2705aac`; main-branch GitHub Actions success confirmed by the owner. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
 
 **Acceptance Criteria**
 
@@ -83,7 +83,7 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 1  
 **Dependencies:** AF-005  
-**Status:** Implemented with synthetic adapters and verified locally after AF-005 passed; pending human review. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
+**Status:** Accepted and merged in `2705aac`; main-branch GitHub Actions success confirmed by the owner. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
 
 **Acceptance Criteria**
 
@@ -97,7 +97,7 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 2  
 **Dependencies:** AF-006  
-**Status:** Pending implementation/verification
+**Status:** Implementation in progress; local checkpoint verified, registry TLS prerequisite and native Linux CI verification pending. See SANDBOX.md.
 
 **Acceptance Criteria**
 

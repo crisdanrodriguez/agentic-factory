@@ -1,0 +1,10 @@
+{
+  "repository": "python",
+  "version": "3.13.16-slim-trixie",
+  "index": "sha256:98ce6fb13b3803744fbca11434f00818f1e300e4e48a4f204e07b2c928b6218e",
+  "manifests": {
+    "arm64": "sha256:ff089de2ebe52f328c4834221097e20eae7f7e4148ea06ac42bd8440d3c79094",
+    "amd64": "sha256:08b493e9c2f92a0f84e45062338a1503d0f585d63ba8783baad5a24cdf200894"
+  },
+  "sourceRevision": "d2a898cb88e46203577eabc62cdcf6e92aaee176"
+}

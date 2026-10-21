@@ -2,10 +2,10 @@
 
 ## Milestone 2 implementation status
 
-AF-001–003 are accepted and merged. AF-004–006 are implemented and locally verified, pending human review. PostgreSQL stores workflow and revision metadata; pg-boss owns durable claims, retries, and expiration; synthetic adapters exercise both profiles. The accepted declaration correction remains explicit and checksum-guarded. See `MILESTONE_2_VERIFICATION.md` and `DATABASE.md`. Bootstrap validation remains independently usable without database access.
+AF-001–003 are accepted and merged. AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. PostgreSQL stores workflow and revision metadata; pg-boss owns durable claims, retries, and expiration; synthetic adapters exercise both profiles. The accepted declaration correction remains explicit and checksum-guarded. See `MILESTONE_2_VERIFICATION.md` and `DATABASE.md`. Bootstrap validation remains independently usable without database access.
 
 
-Revision 2.1 of `MASTER_PLAN.md` is the approved baseline. Agentic Factory will develop software and computational experiments with versioned evidence and human oversight. This increment implements only contracts, configuration validation, and a local CLI. It cannot execute a WorkItem, run an experiment, or approve an external action.
+Revision 2.1 of `MASTER_PLAN.md` is the approved baseline. Agentic Factory will develop software and computational experiments with versioned evidence and human oversight. The accepted baseline includes contracts, configuration validation, a local validation CLI, and persistent synthetic workflows. Real agents, real experiments, and external actions remain outside the accepted baseline. AF-007 job sandbox implementation is in progress and is not yet accepted.
 
 ## Initial profiles
 

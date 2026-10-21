@@ -49,5 +49,8 @@ export async function runtimePreflight(api: DockerApi): Promise<'arm64' | 'amd64
     throw new Error('Unsupported Docker security baseline; review runtime versions before execution.');
   if (!details.SecurityOptions.some((s) => s.startsWith('name=seccomp')) || !details.SecurityOptions.includes('name=cgroupns'))
     throw new Error('Required seccomp and cgroup namespace controls are unavailable.');
+  const apparmor = details.SecurityOptions.filter((option) => option.toLowerCase().includes('apparmor'));
+  if (apparmor.length !== 1 || apparmor[0] !== 'name=apparmor,profile=default')
+    throw new Error('Required built-in AppArmor profile is unavailable or unreviewed.');
   return details.Architecture === 'aarch64' ? 'arm64' : 'amd64';
 }

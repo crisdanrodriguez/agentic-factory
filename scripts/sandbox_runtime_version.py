@@ -33,3 +33,26 @@ def require_api_components(components):
     for name, representations in reviewed.items():
         if components.get(name) not in representations:
             raise RuntimeError(f'Active component mismatch: {name}')
+
+
+def require_default_apparmor(options):
+    """Accept only the reviewed Docker 29.9.2 built-in profile representation."""
+    if not isinstance(options, list) or any(not isinstance(option, str) for option in options):
+        raise RuntimeError('Malformed Docker security options')
+    entries = [option for option in options if 'apparmor' in option.lower()]
+    if entries != ['name=apparmor,profile=default']:
+        raise RuntimeError('Required built-in AppArmor profile is unavailable or unreviewed')
+
+
+def require_host_apparmor(enabled, lsm, profiles, arguments, configuration):
+    """Validate read-only host evidence; never load or replace a profile."""
+    if enabled.strip() != 'Y' or 'apparmor' not in lsm.strip().split(','):
+        raise RuntimeError('AppArmor kernel/LSM support is unavailable')
+    entries = [line for line in profiles.splitlines() if line.startswith('docker-default')]
+    if entries != ['docker-default (enforce)']:
+        raise RuntimeError('docker-default is not uniquely loaded in enforce mode')
+    # An alternate config file could hide a template override from the default file.
+    if any('apparmor' in arg.lower() or arg.startswith('--config-file') for arg in arguments):
+        raise RuntimeError('Docker AppArmor/configuration override is forbidden')
+    if not isinstance(configuration, dict) or any('apparmor' in key.lower() for key in configuration):
+        raise RuntimeError('Docker AppArmor template override is forbidden')

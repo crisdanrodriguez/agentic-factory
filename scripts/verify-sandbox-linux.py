@@ -4,7 +4,7 @@ import pathlib
 import platform
 import subprocess
 from sandbox_apparmor_diagnostics import collect_apparmor_diagnostics
-from sandbox_runtime_version import require_containerd_version, embedded_go_version, require_reviewed_go_build, require_api_components
+from sandbox_runtime_version import require_containerd_version, embedded_go_version, require_reviewed_go_build, require_api_components, require_default_apparmor, require_host_apparmor
 
 
 def command(*args):
@@ -25,12 +25,15 @@ for name, expected in packages.items():
     require(actual == expected, f'Unexpected package: {name} {actual}')
     print(f'PACKAGE {name}={actual}', flush=True)
 require(not command('dpkg', '--verify', *packages), 'Installed package contents differ')
+docker_arguments = []
 for service, binary in [('docker', '/usr/bin/dockerd'), ('containerd', '/usr/bin/containerd')]:
     pid = command('systemctl', 'show', '--property=MainPID', '--value', service)
     require(pid.isdigit() and int(pid) > 1, f'{service} is not running')
     executable = pathlib.Path(f'/proc/{pid}/exe')
     require(str(executable.resolve()) == binary and executable.samefile(binary), f'Unexpected active {service} executable')
     arguments = pathlib.Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0', b' ').decode()
+    if service == 'docker':
+        docker_arguments = pathlib.Path(f'/proc/{pid}/cmdline').read_bytes().decode().rstrip('\0').split('\0')
     require('tcp://' not in arguments, 'TCP daemon access is forbidden')
 require(command('/usr/bin/runc', '--version').splitlines()[0] == 'runc version 1.5.2', 'Unreviewed runc binary')
 containerd_output = command('/usr/bin/containerd', '--version')
@@ -51,7 +54,15 @@ require(info['OSType'] == 'linux' and info['Architecture'] == 'x86_64', 'Wrong d
 require(info['DefaultRuntime'] == 'runc' and info['CgroupVersion'] == '2', 'Required runtime/cgroups unavailable')
 require(info['Runtimes']['runc']['path'] in ('runc', '/usr/bin/runc'), 'Unexpected runc runtime path')
 collect_apparmor_diagnostics(info)
-for option in ('name=seccomp,profile=builtin', 'name=cgroupns', 'name=apparmor'):
+require_default_apparmor(info.get('SecurityOptions'))
+apparmor_config = pathlib.Path('/etc/docker/daemon.json')
+require_host_apparmor(
+    pathlib.Path('/sys/module/apparmor/parameters/enabled').read_text(),
+    pathlib.Path('/sys/kernel/security/lsm').read_text(),
+    pathlib.Path('/sys/kernel/security/apparmor/profiles').read_text(),
+    docker_arguments, json.loads(apparmor_config.read_text()) if apparmor_config.exists() else {})
+print('PASS: AppArmor kernel, active LSM, enforced docker-default and no daemon template override', flush=True)
+for option in ('name=seccomp,profile=builtin', 'name=cgroupns'):
     require(option in info['SecurityOptions'], f'Missing security option: {option}')
 for capability in ('MemoryLimit', 'SwapLimit', 'CpuCfsPeriod', 'CpuCfsQuota', 'PidsLimit'):
     require(info.get(capability) is True, f'Missing resource control: {capability}')

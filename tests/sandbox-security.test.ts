@@ -66,7 +66,7 @@ test('sandbox preflight fails closed for missing isolation controls and unsuppor
   await assert.rejects(runtimePreflight(new MissingControls('/synthetic-unavailable.sock')));
   class OldRuntime extends DockerApi {
     override async json(_method: string, path: string): Promise<unknown> {
-      return path === '/info' ? { OSType: 'linux', Architecture: 'aarch64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=seccomp', 'name=cgroupns'] } :
+      return path === '/info' ? { OSType: 'linux', Architecture: 'aarch64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=apparmor,profile=default', 'name=seccomp', 'name=cgroupns'] } :
         { Components: [{ Name: 'Engine', Version: '28.4.0' }, { Name: 'runc', Version: '1.2.5' }] };
     }
   }
@@ -78,7 +78,7 @@ test('sandbox native AMD64 preflight accepts only the exact reviewed component c
   class Fixture extends DockerApi {
     constructor(private readonly engine: string, private readonly containerd: string, private readonly runc: string) { super('/synthetic.sock'); }
     override async json(_method: string, path: string): Promise<unknown> {
-      return path === '/info' ? { OSType: 'linux', Architecture: 'x86_64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=seccomp', 'name=cgroupns'] } :
+      return path === '/info' ? { OSType: 'linux', Architecture: 'x86_64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=apparmor,profile=default', 'name=seccomp', 'name=cgroupns'] } :
         { Components: [{ Name: 'docker-init', Version: '0.19.0' }, { Name: 'Engine', Version: this.engine }, { Name: 'containerd', Version: this.containerd }, { Name: 'runc', Version: this.runc }] };
     }
   }
@@ -88,4 +88,67 @@ test('sandbox native AMD64 preflight accepts only the exact reviewed component c
     await assert.rejects(runtimePreflight(new Fixture('29.9.2', invalid, '1.5.2')));
   for (const values of [['29.9.1', '2.4.2', '1.5.2'], ['29.9.3', '2.4.2', '1.5.2'], ['29.9.2', '', '1.5.2'], ['29.9.2', '2.4.1', '1.5.2'], ['29.9.2', '2.4.2', '1.5.1']] as const)
     await assert.rejects(runtimePreflight(new Fixture(values[0], values[1], values[2])));
+});
+
+test('sandbox runtime rejects missing duplicate conflicting and unreviewed AppArmor metadata', async () => {
+  const { DockerApi, runtimePreflight } = await import('../src/adapters/sandbox/docker-api.js');
+  class Fixture extends DockerApi {
+    constructor(private readonly entries: string[]) { super('/synthetic.sock'); }
+    override async json(_method: string, path: string): Promise<unknown> {
+      return path === '/info' ? { OSType: 'linux', Architecture: 'x86_64', CgroupVersion: '2', DefaultRuntime: 'runc',
+        SecurityOptions: [...this.entries, 'name=seccomp,profile=builtin', 'name=cgroupns'] } :
+        { Components: [{ Name: 'Engine', Version: '29.9.2' }, { Name: 'containerd', Version: 'v2.4.2' }, { Name: 'runc', Version: '1.5.2' }] };
+    }
+  }
+  const approved = 'name=apparmor,profile=default';
+  assert.equal(await runtimePreflight(new Fixture([approved])), 'amd64');
+  for (const entries of [[], ['name=apparmor'], [approved, approved], [approved, 'name=apparmor,profile=unconfined'],
+    ['name=apparmor,profile=unconfined'], ['name=apparmor,profile=custom'], [approved + ',mode=complain'], [approved + ' '], [approved, ' name=apparmor,profile=unconfined']])
+    await assert.rejects(runtimePreflight(new Fixture(entries)), /AppArmor/);
+});
+
+test('sandbox refuses exec creation for missing unconfined or unexpected inspected profiles', async () => {
+  const { DockerApi } = await import('../src/adapters/sandbox/docker-api.js');
+  const { DockerRuntime } = await import('../src/adapters/sandbox/docker-runtime.js');
+  class Fixture extends DockerApi {
+    constructor(private readonly profile: string | undefined) { super('/synthetic.sock'); }
+    override async json(method: string): Promise<unknown> {
+      assert.equal(method, 'GET', 'No execution may be created');
+      return { Id: 'synthetic', AppArmorProfile: this.profile, Config: { Labels: {} },
+        State: { Running: true, Paused: false, OOMKilled: false } };
+    }
+  }
+  for (const profile of [undefined, '', 'unconfined', 'custom', 'docker-default (complain)', 'docker-default '])
+    await assert.rejects(new DockerRuntime(new Fixture(profile), 'synthetic').createExecution('synthetic', ['false']), /AppArmor/);
+});
+
+test('sandbox execution wrapper rejects ineffective confinement before invoking project code', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { confinedExecution } = await import('../src/adapters/sandbox/docker-runtime.js');
+  for (const profile of ['unconfined', 'docker-default (complain)', 'custom (enforce)', '', 'docker-default (enforce)']) {
+    // Synthetic kernel evidence only; hosted integration must verify the real process attribute.
+    const program = "import pathlib,os; pathlib.Path.read_text=lambda self: " + JSON.stringify(profile) +
+      "; os.execvp=lambda *args: print('PROJECT_INVOKED'); exec(" + JSON.stringify(confinedExecution) + ")";
+    const result = spawnSync('python3', ['-c', program, 'synthetic-command'], { encoding: 'utf8' });
+    assert.equal(result.status, profile === 'docker-default (enforce)' ? 0 : 1, result.stderr);
+    assert.equal(result.stdout.includes('PROJECT_INVOKED'), profile === 'docker-default (enforce)');
+  }
+});
+
+test('sandbox wraps project execution in isolated Python without interpolating the command', async () => {
+  const { DockerApi } = await import('../src/adapters/sandbox/docker-api.js');
+  const { DockerRuntime, confinedExecution } = await import('../src/adapters/sandbox/docker-runtime.js');
+  const command = ['sh', '-c', 'printf synthetic'];
+  class Fixture extends DockerApi {
+    override async json(method: string, _path: string, body?: unknown): Promise<unknown> {
+      if (method === 'GET') return { Id: 'synthetic', AppArmorProfile: 'docker-default', Config: { Labels: {} },
+        State: { Running: true, Paused: false, OOMKilled: false } };
+      assert.deepEqual(body, { User: '65534:65534', WorkingDir: '/workspace',
+        Env: ['PATH=/usr/local/bin:/usr/bin:/bin', 'PYTHONDONTWRITEBYTECODE=1'],
+        Cmd: ['python', '-I', '-c', confinedExecution, ...command], AttachStdout: false,
+        AttachStderr: false, AttachStdin: false, Tty: false, Privileged: false });
+      return { Id: 'a'.repeat(64) };
+    }
+  }
+  assert.equal(await new DockerRuntime(new Fixture('/synthetic.sock'), 'synthetic').createExecution('synthetic', command), 'a'.repeat(64));
 });

@@ -24,12 +24,12 @@ function testInstance(): string {
 }
 const context = { ownerId: 'synthetic', projectId: 'project', workItemId: 'work', runId: 'run', planRevision: 'plan', policyRevision: 'policy', sourceSnapshot: 'source', environmentFingerprint: 'python' };
 const base = grantSchema.parse({ id: 'grant', organizationId: 'organization', context, environment: 'python',
-  command: ['python', '-c', "open('/workspace/result','w').write('synthetic output')"],
+  command: ['python', '-c', "import pathlib; assert pathlib.Path('/proc/self/attr/current').read_text().strip()=='docker-default (enforce)'; open('/workspace/result','w').write('synthetic output')"],
   limits: { cpu: 0.25, memoryMb: 96, pids: 24, workspaceBytes: 4194304, outputBytes: 1024, durationSeconds: 10, network: 'none' }, files: [], outputs: ['result'] });
 const start = (command = base.command, contextValue = context) => ({ operation: 'start', grantId: 'grant', request: { context: contextValue,
   idempotencyKey: 'operation', command, authorizedEnvironment: 'python', maxMemoryMb: 96, maxDurationSeconds: 10 } });
 
-test('sandbox real runtime enforces baseline and completes bounded output through authenticated Unix socket', async () => {
+test('sandbox real runtime enforces AppArmor in the project process and completes bounded output through authenticated Unix socket', async () => {
   await runtimePreflight(api);
   const directory = await mkdtemp(join(tmpdir(), 'af007-integration-'));
   const runtime = new DockerRuntime(api, testInstance());

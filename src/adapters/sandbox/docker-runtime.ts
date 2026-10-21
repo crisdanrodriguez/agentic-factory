@@ -3,9 +3,15 @@ import { DockerApi, DockerError } from './docker-api.js';
 import { collectWorkspace, prepareWorkspace } from './container-helper.js';
 import type { Grant } from './policy.js';
 
+// This trusted wrapper checks the exec process before replacing itself with the project command.
+export const confinedExecution = `import os,pathlib,sys
+if pathlib.Path('/proc/self/attr/current').read_text().strip() != 'docker-default (enforce)':
+ raise RuntimeError('Required AppArmor process confinement is unavailable')
+os.execvp(sys.argv[1], sys.argv[1:])
+`;
 const idSchema = z.object({ Id: z.string().regex(/^[a-f0-9]{64}$/) });
 const executionSchema = z.object({ Running: z.boolean(), ExitCode: z.number().int().nullable() });
-export const containerSchema = z.object({ Id: z.string(), Config: z.object({ Labels: z.record(z.string(), z.string()).nullable() }),
+export const containerSchema = z.object({ Id: z.string(), AppArmorProfile: z.string().optional(), Config: z.object({ Labels: z.record(z.string(), z.string()).nullable() }),
   State: z.object({ Running: z.boolean(), Paused: z.boolean(), OOMKilled: z.boolean() }) });
 export class DockerRuntime {
   constructor(readonly api: DockerApi, readonly instance: string) {}
@@ -16,7 +22,7 @@ export class DockerRuntime {
       Cmd: ['python', '-c', 'import time; time.sleep(3600)'],
       Labels: { 'af.instance': this.instance, 'af.job': name, 'af.digest': digest },
       HostConfig: { Runtime: 'runc', NetworkMode: 'none', ReadonlyRootfs: true, Init: true, CapDrop: ['ALL'],
-        SecurityOpt: ['no-new-privileges:true'], NanoCpus: Math.floor(grant.limits.cpu * 1e9),
+        SecurityOpt: ['no-new-privileges:true', 'apparmor=docker-default'], NanoCpus: Math.floor(grant.limits.cpu * 1e9),
         Memory: grant.limits.memoryMb * 1024 * 1024, MemorySwap: grant.limits.memoryMb * 1024 * 1024,
         PidsLimit: grant.limits.pids, ShmSize: 1024 * 1024, LogConfig: { Type: 'none', Config: {} },
         Ulimits: [{ Name: 'nofile', Soft: 64, Hard: 64 }],
@@ -31,15 +37,17 @@ export class DockerRuntime {
   }
   async startContainer(name: string): Promise<void> { await this.api.call('POST', `/containers/${name}/start`); }
   async createExecution(name: string, command: readonly string[], capture = false): Promise<string> {
+    if ((await this.container(name))?.AppArmorProfile !== 'docker-default')
+      throw new Error('Required container AppArmor profile is unavailable.');
     return idSchema.parse(await this.api.json('POST', `/containers/${name}/exec`, {
       User: '65534:65534', WorkingDir: '/workspace', Env: ['PATH=/usr/local/bin:/usr/bin:/bin', 'PYTHONDONTWRITEBYTECODE=1'],
-      Cmd: command, AttachStdout: capture, AttachStderr: capture, AttachStdin: false, Tty: false, Privileged: false,
+      Cmd: ['python', '-I', '-c', confinedExecution, ...command], AttachStdout: capture, AttachStderr: capture, AttachStdin: false, Tty: false, Privileged: false,
     })).Id;
   }
   async startExecution(id: string): Promise<void> { await this.api.call('POST', `/exec/${id}/start`, { Detach: true, Tty: false }); }
   async execution(id: string): Promise<z.infer<typeof executionSchema>> { return executionSchema.parse(await this.api.json('GET', `/exec/${id}/json`)); }
   private async helper(name: string, command: string[]): Promise<string> {
-    const id = await this.createExecution(name, command, true);
+    const id = await this.createExecution(name, ['python', '-I', ...command.slice(1)], true);
     const response = await this.api.call('POST', `/exec/${id}/start`, { Detach: false, Tty: false });
     const exit = await this.execution(id);
     if (exit.Running || exit.ExitCode !== 0) throw new Error('Sandbox helper failed.');
@@ -56,6 +64,7 @@ export class DockerRuntime {
     const verify = `import os,pathlib,socket,sys
 p=pathlib.Path
 assert os.getuid()==65534
+assert p('/proc/self/attr/current').read_text().strip()=='docker-default (enforce)'
 s=p('/proc/self/status').read_text()
 fields=dict(line.split(':',1) for line in s.splitlines() if ':' in line)
 assert fields['NoNewPrivs'].strip()=='1' and fields['Seccomp'].strip()=='2'

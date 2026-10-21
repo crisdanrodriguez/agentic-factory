@@ -25,12 +25,14 @@ def start(code):
     name=PREFIX+'-'+str(len(created)); created.append(name)
     args=['run','-d','--pull=never','--name',name,'--label','af007.checkpoint='+PREFIX,
       '--runtime=runc','--init','--network=none','--read-only','--user=65534:65534',
-      '--cap-drop=ALL','--security-opt=no-new-privileges=true','--cpus=0.25',
+      '--cap-drop=ALL','--security-opt=apparmor=docker-default','--security-opt=no-new-privileges=true','--cpus=0.25',
       '--memory=96m','--memory-swap=96m','--pids-limit=24','--ulimit','nofile=64:64',
       '--log-driver=none','--shm-size=1m','--tmpfs','/workspace:rw,nosuid,nodev,size=4194304,nr_inodes=128,mode=0700,uid=65534,gid=65534',
       '--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=1048576,nr_inodes=128,mode=1777',
       IMAGE,'python','-u','-c',code]
-    docker(*args); return name
+    docker(*args)
+    assert json.loads(docker('inspect',name).stdout)[0]['AppArmorProfile']=='docker-default'
+    return name
 
 def execute(name,code):
     return docker('exec',name,'python','-c',code).stdout.strip()
@@ -40,6 +42,7 @@ try:
     result=execute(c,'''import os,socket,pathlib,json,errno
 p=pathlib.Path
 assert os.getuid()==65534
+assert p('/proc/self/attr/current').read_text().strip()=='docker-default (enforce)'
 status=p('/proc/self/status').read_text()
 assert 'NoNewPrivs:\\t1' in status and 'Seccomp:\\t2' in status
 assert int(next(x.split()[1] for x in status.splitlines() if x.startswith('CapEff:')),16)==0
@@ -57,7 +60,7 @@ assert p('/sys/fs/cgroup/memory.max').read_text().strip()=='100663296'
 assert p('/sys/fs/cgroup/memory.swap.max').read_text().strip()=='0'
 assert p('/sys/fs/cgroup/pids.max').read_text().strip()=='24'
 q,period=map(int,p('/sys/fs/cgroup/cpu.max').read_text().split()); assert q/period==0.25
-print('nonroot, no capabilities, seccomp, no-new-privileges, no socket/host paths, network denied, readonly root; cgroup ceilings verified')''')
+print('docker-default (enforce) process confinement, nonroot, no capabilities, seccomp, no-new-privileges, no socket/host paths, network denied, readonly root; cgroup ceilings verified')''')
     print(result); ok('isolation and configured resource ceilings')
     result=execute(c,'''import time,pathlib
 p=pathlib.Path('/sys/fs/cgroup/cpu.stat')

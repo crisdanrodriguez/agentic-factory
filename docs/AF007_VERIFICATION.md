@@ -149,3 +149,31 @@ Run [39578840617](https://github.com/crisdanrodriguez/agentic-factory/actions/ru
 Adjacent Engine, runc, package and component-specific Go checks remain unchanged. The CLI version parser already verifies its separately reviewed prefixed format. No TLS, registry, image digest, filesystem or isolation assertion is removed or relaxed.
 
 Local checks: lint, strict typecheck, build, dependency verification and whitespace checks passed; unit tests 65/65, dependency tests 7/7, tooling tests 62/62. The expanded TypeScript preflight case and 17 new Python API cases cover acceptance and rejection. The local Docker socket is absent, so Docker-backed database and sandbox suites cannot be rerun locally. Hosted verification remains required; macOS ARM64 remains outstanding.
+
+## Approved AppArmor capability and confinement correction — 2026-10-21
+
+Diagnostic run [39693978243](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39693978243)
+reported `["name=apparmor,profile=default","name=seccomp,profile=builtin","name=cgroupns"]`,
+kernel AppArmor `Y`, an active LSM list containing AppArmor, and
+`docker-default (enforce)` loaded. The earlier exact bare-name comparison was
+incorrect. No runner security configuration is changed by this correction.
+
+Acceptance mapping:
+
+| Requirement | Maintained evidence |
+| --- | --- |
+| Exact default metadata, reject absent/duplicate/conflicting/custom/malformed | `tests/sandbox-tools.test.mjs` AppArmor metadata parser cases; `tests/sandbox-security.test.ts` runtime metadata test |
+| Enabled kernel, active LSM, enforce-mode loaded profile, no template/config override | Mandatory `verify-sandbox-linux.py`; tooling AppArmor host evidence cases |
+| Explicit container profile and reject unexpected/missing inspected profile | `docker-runtime.ts` exec gate; unit test refusing exec creation |
+| Fail before invoking project code without effective confinement | Trusted exec wrapper; synthetic ineffective-confinement unit test |
+| Actual project-process confinement | First `tests/sandbox/broker.test.ts` integration test reads process attribute inside project command |
+| Actual native isolation and resource controls | First feasibility property checks inspected profile and process attribute; all nine properties remain mandatory |
+| Cleanup on failure, no suppressed required checks | Existing unconditional CI cleanup and workflow regression tests, unchanged |
+
+Local verification uses Node 24.22.0 and npm 11.9.0. Lint, strict typecheck,
+build, dependency verification, and whitespace checks pass. Dependency tests:
+7/7; unit tests: 69/69; sandbox tooling: 83/83. Zero failures, skips, or
+cancellations. Native Linux preflight, immutable image preparation, 14 broker
+integration tests, nine feasibility properties, and PostgreSQL suites require
+hosted verification; no local Docker runtime was started. Hosted outcomes must
+be reported separately. macOS ARM64 validation remains outstanding.

@@ -154,3 +154,48 @@ for (const component of ['Engine', 'runc']) {
     assert.ok(result.stderr.includes(`Active component mismatch: ${component}`));
   });
 }
+
+for (const [description, entries, valid] of [
+  ['observed default profile', ['name=apparmor,profile=default'], true],
+  ['missing', [], false],
+  ['malformed additional entry', ['name=apparmor,profile=default', ' name=apparmor,profile=unconfined'], false],
+  ['unspecified profile', ['name=apparmor'], false],
+  ['unconfined', ['name=apparmor,profile=unconfined'], false],
+  ['custom template', ['name=apparmor,profile=/etc/docker/custom'], false],
+  ['suffix', ['name=apparmor,profile=default,mode=complain'], false],
+  ['duplicate', ['name=apparmor,profile=default', 'name=apparmor,profile=default'], false],
+  ['conflicting', ['name=apparmor,profile=default', 'name=apparmor,profile=unconfined'], false],
+  ['malformed', ['name=apparmor,profile=default ', null], false],
+]) {
+  test(`AppArmor metadata parser: ${description}`, () => {
+    const options = [...entries, 'name=seccomp,profile=builtin', 'name=cgroupns'];
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys,json; sys.path.insert(0, "scripts"); from sandbox_runtime_version import require_default_apparmor; require_default_apparmor(json.loads(sys.argv[1]))',
+      JSON.stringify(options)], { encoding: 'utf8' });
+    assert.equal(result.status, valid ? 0 : 1, result.stderr);
+    if (!valid) assert.match(result.stderr, /AppArmor profile is unavailable or unreviewed|Malformed Docker security options/);
+  });
+}
+
+for (const [description, changes, valid] of [
+  ['reviewed host', {}, true],
+  ['disabled kernel', { enabled: 'N' }, false],
+  ['missing LSM', { lsm: 'lockdown,capability' }, false],
+  ['missing profile', { profiles: '' }, false],
+  ['complain mode', { profiles: 'docker-default (complain)' }, false],
+  ['duplicate profile', { profiles: 'docker-default (enforce)\ndocker-default (enforce)' }, false],
+  ['conflicting profile', { profiles: 'docker-default (enforce)\ndocker-default (complain)' }, false],
+  ['custom CLI template', { arguments: ['/usr/bin/dockerd', '--apparmor-profile=/tmp/custom'] }, false],
+  ['split CLI template', { arguments: ['/usr/bin/dockerd', '--apparmor-profile', '/tmp/custom'] }, false],
+  ['alternate config', { arguments: ['/usr/bin/dockerd', '--config-file=/tmp/custom.json'] }, false],
+  ['custom JSON template', { configuration: { 'apparmor-profile': '/tmp/custom' } }, false],
+]) {
+  test(`AppArmor host evidence: ${description}`, () => {
+    const evidence = { enabled: 'Y\n', lsm: 'lockdown,capability,apparmor', profiles: 'docker-default (enforce)\n',
+      arguments: ['/usr/bin/dockerd', '-H', 'fd://'], configuration: {}, ...changes };
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys,json; sys.path.insert(0,"scripts"); from sandbox_runtime_version import require_host_apparmor; require_host_apparmor(**json.loads(sys.argv[1]))',
+      JSON.stringify(evidence)], { encoding: 'utf8' });
+    assert.equal(result.status, valid ? 0 : 1, result.stderr);
+  });
+}

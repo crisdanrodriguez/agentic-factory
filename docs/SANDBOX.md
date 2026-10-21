@@ -126,3 +126,28 @@ The [Go release history](https://go.dev/doc/devel/release#go1.27.3) records cryp
 These branches are explicitly reviewed per component, not interchangeable or a generic minimum-version policy. Newer versions, Go 1.27.2, Go 1.26.9, custom builds and malformed/missing build metadata are rejected. Exact package pins and integrity checks run first. Active executable path and file identity must match the installed binary. The preflight parses the complete header produced by `go version -m /usr/bin/containerd`, which reads the binary's embedded build information rather than the inspection tool's own version. It prints the extracted version and checks the exact component/version/Go tuple. Docker API component versions and daemon GoVersion retain exact checks; the containerd CLI parser and runc checks are unchanged.
 
 This corrects the assumption in the historical checkpoint that both components must share Go 1.26.10. It does not itself establish that all later isolation and sandbox checks pass, and it does not complete macOS ARM64 validation.
+
+## Required AppArmor capability and process confinement
+
+The reviewed Ubuntu AMD64 baseline requires exactly one Docker security entry,
+`name=apparmor,profile=default`. Static preflight also reads the enabled kernel
+parameter, active LSM list, and loaded profiles and requires
+`docker-default (enforce)`. Daemon AppArmor template overrides and alternate
+configuration-file arguments are rejected. These checks do not install tooling,
+load profiles, activate services, or alter kernel configuration.
+
+Static metadata is not proof that a project process is confined. The broker
+explicitly selects `apparmor=docker-default`, inspects each container before
+creating an exec, and requires `AppArmorProfile === docker-default`. A trusted
+Python wrapper reads its own `/proc/self/attr/current` and requires
+`docker-default (enforce)` before replacing itself with the authorized command.
+The preparation helper independently checks confinement. The maintained broker
+integration test checks the same attribute inside the project command, while
+the feasibility suite checks both inspection metadata and a running process.
+No unconfined or complain-mode fallback is supported.
+
+The Python wrapper and trusted helpers use isolated Python mode (`-I`) to prevent
+workspace modules from shadowing the confinement checks. The wrapper uses the existing trusted Python environment and no additional
+dependency. This does not establish macOS ARM64 compatibility: historical offline
+results remain preliminary, and the required AppArmor baseline must not be
+silently omitted on Docker Desktop.

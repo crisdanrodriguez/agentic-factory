@@ -3,6 +3,7 @@ import json
 import pathlib
 import platform
 import subprocess
+from sandbox_apparmor_diagnostics import collect_apparmor_diagnostics
 from sandbox_runtime_version import require_containerd_version, embedded_go_version, require_reviewed_go_build, require_api_components
 
 
@@ -49,6 +50,7 @@ info = json.loads(command(*docker, 'info', '--format', '{{json .}}'))
 require(info['OSType'] == 'linux' and info['Architecture'] == 'x86_64', 'Wrong daemon platform')
 require(info['DefaultRuntime'] == 'runc' and info['CgroupVersion'] == '2', 'Required runtime/cgroups unavailable')
 require(info['Runtimes']['runc']['path'] in ('runc', '/usr/bin/runc'), 'Unexpected runc runtime path')
+collect_apparmor_diagnostics(info)
 for option in ('name=seccomp,profile=builtin', 'name=cgroupns', 'name=apparmor'):
     require(option in info['SecurityOptions'], f'Missing security option: {option}')
 for capability in ('MemoryLimit', 'SwapLimit', 'CpuCfsPeriod', 'CpuCfsQuota', 'PidsLimit'):

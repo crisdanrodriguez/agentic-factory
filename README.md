@@ -1,6 +1,6 @@
 # Agentic Factory
 
-**Status: AF-001–003 bootstrap implemented; awaiting human review.** A local CLI validates synthetic software and ML configurations. There is no workflow engine, working agent, experiment execution, GitHub integration, or Telegram bot.
+**Status: AF-001–003 accepted and merged in `4a0ce53`.** AF-004–006 are implemented and locally verified, pending human review. See [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md). The two profiles run through synthetic end-to-end simulations using local PostgreSQL. No real agents, ML training, GitHub integration, or Telegram bot are implemented.
 
 Agentic Factory is intended to be an open-source, self-hosted, provider-agnostic system that transforms authorized ideas and tasks into verifiable project outcomes. Initial profiles: general software and computational ML research. Pull requests, web deployments, and publication are optional project-specific actions. A future guided experience may support nontechnical consumers.
 
@@ -8,12 +8,14 @@ The first prioritized external control channel is **Telegram**, after the persis
 
 ## Start here
 
-Read [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the local bootstrap commands and [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) for the longer-term plan. Only **AF-001, AF-002, AF-003** are included. Keep implementation separate from any existing MOLVEX or ADDIV repository.
+Read [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the local bootstrap commands and [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) for the longer-term plan. The accepted baseline is **AF-001, AF-002, AF-003**. Unmerged Milestone 2 work is described in the verification report. Keep implementation separate from any existing MOLVEX or ADDIV repository.
 
 Use the tested Node.js 24 LTS version `24.22.0` and npm `11.9.0`, then run:
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
+npm run deps:patch
+npm run test:deps
 npm run lint
 npm run typecheck
 npm test
@@ -23,9 +25,16 @@ node dist/cli/index.js validate fixtures/software-general.json
 node dist/cli/index.js validate fixtures/ml-research.json
 ```
 
+For PostgreSQL-backed queue and synthetic end-to-end tests, follow [`docs/DATABASE.md`](docs/DATABASE.md), then run `npm run test:state`, `npm run test:queue`, and `npm run test:simulations` sequentially.
+
 Validation does not run the fixtures' Python commands or verify installed providers. Neither fixture needs credentials, a remote repository, Telegram, or deployment. The package is private and has not been published; use the local commands above.
 
 ## Documentation
+
+- [`docs/DATABASE.md`](docs/DATABASE.md) — local database setup and explicit migrations
+- [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md) — final review fixes, current results, and CI requirements
+- [`docs/MILESTONE_2_VERIFICATION.md`](docs/MILESTONE_2_VERIFICATION.md) — acceptance mapping, exact verification output, and limitations
+- [`docs/CORE_ENGINE_VERIFICATION.md`](docs/CORE_ENGINE_VERIFICATION.md) — historical checkpoints and accepted dependency-patch maintenance
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — bootstrap boundaries, contracts, and pending decisions
 - [`docs/SECURITY.md`](docs/SECURITY.md) — threats, trusted policy, and data destinations

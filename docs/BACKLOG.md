@@ -1,9 +1,9 @@
 # Agentic Factory — Backlog, Revision 2.1 (Telegram Priority Amendment)
 
-**Status:** proposed tickets; not created or implemented in an external account.  
+**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 implemented and verified locally, pending human review. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. Later tickets remain unimplemented.
 AF-001 through AF-028 remain from revision 2. AF-029 and AF-030 are new Telegram tickets; all previous acceptance criteria are preserved. Numbering alone does not define execution order. See the stage table in the master plan.
 
-**First increment to propose to Codex:** AF-001, AF-002, and AF-003 only. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
+**Accepted first increment:** AF-001, AF-002, and AF-003. **Current approved increment:** AF-004, AF-005, and AF-006 only. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
 
 Web extensions and the nontechnical experience are separate roadmap branches. Telegram is an early optional input/control channel and does not block the first useful software and research workflows without messaging. AF-029 follows AF-023 and precedes GitHub/Codex adapter development; AF-030 follows the versioned approval engine in AF-012. If earlier implementations already exist, review their evidence before accepting or reopening a ticket.
 
@@ -13,13 +13,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 0  
 **Dependencies:** None  
-**Status:** Pending implementation/verification
+**Status:** Accepted and merged in `4a0ce53`; see `BOOTSTRAP_VERIFICATION.md`
 
 **Acceptance Criteria**
 
-- [ ] Adopt revision 2 of MASTER_PLAN.md: ideas/tasks become verifiable results; do not require a web application, pull request, or deployment.
-- [ ] Document two initial profiles, general software and ML research; distinguish the technical engine from the future nontechnical experience.
-- [ ] Include threats, boundaries, sources of truth, privacy, and licensing as an explicit decision; examples must contain no business data. Document Telegram as an optional external control channel, not the durable source of truth.
+- [x] Adopt revision 2 of MASTER_PLAN.md: ideas/tasks become verifiable results; do not require a web application, pull request, or deployment.
+- [x] Document two initial profiles, general software and ML research; distinguish the technical engine from the future nontechnical experience.
+- [x] Include threats, boundaries, sources of truth, privacy, and licensing as an explicit decision; examples must contain no business data. Document Telegram as an optional external control channel, not the durable source of truth.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 
@@ -27,13 +27,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 0  
 **Dependencies:** AF-001  
-**Status:** Pending implementation/verification
+**Status:** Accepted and merged in `4a0ce53`; see `BOOTSTRAP_VERIFICATION.md`
 
 **Acceptance Criteria**
 
-- [ ] A modular TypeScript monolith with a pinned version and lockfile; real lint, typecheck, test, and build scripts for the Factory.
-- [ ] A CLI with help and validation; minimal installation documentation from the first increment.
-- [ ] CI without business secrets; do not impose these Node.js scripts on external projects using Python or other languages.
+- [x] A modular TypeScript monolith with a pinned version and lockfile; real lint, typecheck, test, and build scripts for the Factory.
+- [x] A CLI with help and validation; minimal installation documentation from the first increment.
+- [x] CI without business secrets; do not impose these Node.js scripts on external projects using Python or other languages.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 
@@ -41,13 +41,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 0  
 **Dependencies:** AF-002  
-**Status:** Pending implementation/verification
+**Status:** Accepted and merged in `4a0ce53`; see `BOOTSTRAP_VERIFICATION.md`
 
 **Acceptance Criteria**
 
-- [ ] Small contracts for objectives, profiles, agents, executors, artifacts, and verification, with no SDKs in the core; remote integrations and optional control channels (including Telegram) must not become core dependencies.
-- [ ] Valid software-general and ml-research fixtures without mandatory hosting, URLs, pull requests, or GitHub; understandable errors for missing capabilities.
-- [ ] Project policies cannot relax mandatory policies; distinguish execution, verification, objective assessment, and human decisions.
+- [x] Small contracts for objectives, profiles, agents, executors, artifacts, and verification, with no SDKs in the core; remote integrations and optional control channels (including Telegram) must not become core dependencies.
+- [x] Valid software-general and ml-research fixtures without mandatory hosting, URLs, pull requests, or GitHub; understandable errors for missing capabilities.
+- [x] Project policies cannot relax mandatory policies; distinguish execution, verification, objective assessment, and human decisions.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 
@@ -55,13 +55,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 1  
 **Dependencies:** AF-003  
-**Status:** Pending implementation/verification
+**Status:** Implemented and verified locally; pending human review. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
 
 **Acceptance Criteria**
 
-- [ ] Persist context, versioned plans/protocols and policies, subtasks, jobs, evidence, and approvals.
-- [ ] External identifiers are optional: a local request works without GitHub/Linear; every task retains an authorized owner/project.
-- [ ] Test invalid transitions, stale evidence, and restart; no deployment must not prevent completion of a profile that does not require it.
+- [x] Persist context, versioned plans/protocols and policies, subtasks, jobs, evidence, and approvals.
+- [x] External identifiers are optional: a local request works without GitHub/Linear; every task retains an authorized owner/project.
+- [x] Test invalid transitions, stale evidence, and restart; no deployment must not prevent completion of a profile that does not require it.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 
@@ -69,13 +69,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 1  
 **Dependencies:** AF-004  
-**Status:** Pending implementation/verification
+**Status:** Implemented and verified locally after the accepted dependency correction; pending human review. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
 
 **Acceptance Criteria**
 
-- [ ] Use a maintained library; implement lease recovery and rejection of updates from stale lease owners.
-- [ ] Separate technical repair from new experimental variants; each has its own limits.
-- [ ] Waiting for approval or an external job releases the coordinating worker; verify cancellation, timeouts, and deduplication.
+- [x] Use a maintained library; implement lease recovery and rejection of updates from stale lease owners.
+- [x] Separate technical repair from new experimental variants; each has its own limits.
+- [x] Waiting for approval or an external job releases the coordinating worker; verify cancellation, timeouts, and deduplication.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 
@@ -83,13 +83,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 1  
 **Dependencies:** AF-005  
-**Status:** Pending implementation/verification
+**Status:** Implemented with synthetic adapters and verified locally after AF-005 passed; pending human review. See MILESTONE_2_REVIEW_CORRECTIONS.md for current evidence.
 
 **Acceptance Criteria**
 
-- [ ] Compose and fake adapters execute both profiles without external APIs or real data.
-- [ ] Test success, repairable failure, exhausted attempts, cancellation, approval, duplicate events, and restart.
-- [ ] A simulated ML outcome without improvement does not trigger endless repair; simulated results are labeled and never presented as real experiments.
+- [x] Compose and fake adapters execute both profiles without external APIs or real data.
+- [x] Test success, repairable failure, exhausted attempts, cancellation, approval, duplicate events, and restart.
+- [x] A simulated ML outcome without improvement does not trigger endless repair; simulated results are labeled and never presented as real experiments.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 

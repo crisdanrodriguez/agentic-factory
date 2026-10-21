@@ -1,5 +1,11 @@
 # Bootstrap verification — AF-001–003
 
+Personal repository paths in historical output are normalized to `/path/to/agentic-factory`; diagnostics and results are otherwise preserved.
+
+## Acceptance update
+
+AF-001–003 were accepted by the owner and merged in `4a0ce53`. The outputs and limitations below are historical evidence from the bootstrap sessions. References to pending review, untracked files, or no commit/merge describe those sessions, not the current repository. No additional hosted CI result is inferred from the merge. Milestone 2 evidence is recorded separately in `CORE_ENGINE_VERIFICATION.md`.
+
 ## Scope and environment
 
 Implemented only AF-001, AF-002, and AF-003. Human review is pending. The master plan, backlog, amendments, prompts, AGENTS.md, and existing LICENSE are preserved. Backlog checkboxes are intentionally unchanged; this report provides implementation evidence for review.
@@ -51,7 +57,7 @@ Exit code: 0.
 
 ```text
 $ npm ls --depth=0
-agentic-factory@0.0.0 /Users/crisdanrodriguez/Documents/GitHub/agentic-factory
+agentic-factory@0.0.0 /path/to/agentic-factory
 ├── @types/node@24.19.2
 ├── eslint@10.13.0
 ├── typescript-eslint@8.71.2
@@ -236,7 +242,7 @@ Exit code: 0.
 
 ```text
 $ npm ls --depth=0
-agentic-factory@0.0.0 /Users/crisdanrodriguez/Documents/GitHub/agentic-factory
+agentic-factory@0.0.0 /path/to/agentic-factory
 ├── @types/node@24.19.2
 ├── eslint@10.13.0
 ├── typescript-eslint@8.71.2

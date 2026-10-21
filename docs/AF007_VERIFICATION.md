@@ -110,3 +110,25 @@ The first database attempts received sandbox `EPERM`; repeating outside that san
 | Preserve Core Engine and dependency correction | Existing CI checks job unchanged; local unit and dependency tests pass; real PostgreSQL rerun blocked as recorded above |
 
 No installed Linux runtime versions, successful registry transactions, or Linux cleanup results are claimed by synthetic tooling tests. No current macOS security baseline is claimed. A successful future Linux run should be recorded as **Linux-verified; macOS validation outstanding**, until the separate macOS requirement passes.
+
+## Hosted containerd version-format correction — 2026-10-21
+
+Draft PR #3 run [39576316285](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39576316285) passed the Core Engine job. The sandbox job installed the exact reviewed packages, passed package integrity, active executable provenance and runc checks, then failed at the containerd CLI substring assertion. Its unconditional cleanup passed; image preparation and sandbox execution did not run.
+
+The failed log does **not** contain the literal `containerd --version` output: `check_output` captured it without printing. It must not be represented as an observed CLI line. Independent inspection downloaded the identical official package without installation or execution and matched its SHA-256 to the CI archive:
+
+```text
+f811ab57d1f4bb0cce19df7d526da8c711d8ebea0447cc83da1999188e664122
+```
+
+Embedded linker metadata sets `version.Version=v2.4.2`, `version.Package=containerd`, and `version.Revision=b7a25261e029d68978bbf290df0a62fc819b3c51`. The [upstream v2.4.2 VersionPrinter](https://github.com/containerd/containerd/blob/v2.4.2/cmd/containerd/command/main.go) prints name, package, version and revision. Together they establish this expected line, pending literal capture in the corrected hosted run:
+
+```text
+containerd containerd v2.4.2 b7a25261e029d68978bbf290df0a62fc819b3c51
+```
+
+The old `' 2.4.2 '` substring rejects the official `v2.4.2` token. The correction prints the captured line as JSON and uses a full-match parser for the verified Docker package/upstream package formats, exact reviewed version, and a 40-character hexadecimal revision. Unknown packages, extra text, missing fields, dirty/prerelease builds and other versions fail closed. Package pins, provenance, integrity and isolation checks are unchanged.
+
+Adjacent checks were reviewed: runc's exact first-line comparison passed in the failed job; Debian versions use exact equality; Docker API component versions and daemon GoVersion use exact equality. The containerd Go build-header check is separate and unchanged. Checks after the failing CLI assertion still need hosted evidence; no speculative version normalization was added elsewhere.
+
+Local correction checks: lint, strict typecheck, build and `git diff --check` exit 0; unit tests 65/65; dependency tests 7/7; sandbox tooling tests 24/24, including 15 new valid/invalid parser fixtures. Native Linux provisioning and sandbox execution cannot be validated on this macOS host. Earlier local PostgreSQL unavailability and macOS ARM64 secure-validation limitations remain unchanged. This correction does not establish Linux verification or full AF-007 completion.

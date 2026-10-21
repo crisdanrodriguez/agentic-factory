@@ -59,3 +59,31 @@ test('provisioning refuses a non-GitHub-hosted environment before installation',
   const result=spawnSync('bash',['scripts/provision-sandbox-ci.sh'],{env:{...process.env,GITHUB_ACTIONS:'false'},encoding:'utf8'});
   assert.equal(result.status,1);
 });
+
+const containerdRevision = 'b7a25261e029d68978bbf290df0a62fc819b3c51';
+const reviewedContainerd = `containerd containerd v2.4.2 ${containerdRevision}`;
+for (const [description, output, valid] of [
+  ['Docker package format', reviewedContainerd, true],
+  ['upstream package format', `containerd github.com/containerd/containerd/v2 v2.4.2 ${containerdRevision}`, true],
+  ['older version', reviewedContainerd.replace('v2.4.2', 'v2.4.1'), false],
+  ['newer version', reviewedContainerd.replace('v2.4.2', 'v2.4.3'), false],
+  ['version substring', reviewedContainerd.replace('v2.4.2', 'v2.4.20'), false],
+  ['prerelease', reviewedContainerd.replace('v2.4.2', 'v2.4.2-rc.1'), false],
+  ['dirty build', reviewedContainerd.replace('v2.4.2', 'v2.4.2+dirty'), false],
+  ['wrong executable', reviewedContainerd.replace(/^containerd/, 'ctr'), false],
+  ['wrong package', reviewedContainerd.replace('containerd containerd', 'containerd untrusted'), false],
+  ['missing version prefix', reviewedContainerd.replace('v2.4.2', '2.4.2'), false],
+  ['missing revision', 'containerd containerd v2.4.2', false],
+  ['invalid revision', reviewedContainerd.replace(containerdRevision, 'unknown'), false],
+  ['extra token', reviewedContainerd + ' extra', false],
+  ['multiple lines', reviewedContainerd + '\n' + reviewedContainerd, false],
+  ['empty output', '', false],
+]) {
+  test(`containerd version parser: ${description}`, () => {
+    const result = spawnSync('python3', ['-B', '-c',
+      'import sys; sys.path.insert(0, "scripts"); from sandbox_runtime_version import require_containerd_version; require_containerd_version(sys.argv[1])', output],
+    { encoding: 'utf8' });
+    assert.equal(result.status, valid ? 0 : 1, result.stderr);
+    if (!valid) assert.match(result.stderr, /Unreviewed containerd binary version or output format/);
+  });
+}

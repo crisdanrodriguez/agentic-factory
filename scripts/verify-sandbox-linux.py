@@ -42,6 +42,7 @@ require_reviewed_go_build('containerd', '2.4.2', containerd_go)
 docker = ['docker', '--host', 'unix:///var/run/docker.sock']
 version = json.loads(command(*docker, 'version', '--format', '{{json .Server}}'))
 components = {item['Name']: item['Version'] for item in version['Components']}
+print('ACTIVE_COMPONENTS ' + json.dumps(components, sort_keys=True), flush=True)
 for name, expected in {'Engine': '29.9.2', 'containerd': '2.4.2', 'runc': '1.5.2'}.items():
     require(components.get(name) == expected, f'Active component mismatch: {name}')
 require_reviewed_go_build('Engine', components['Engine'], version['GoVersion'])

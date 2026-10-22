@@ -1,6 +1,6 @@
 # Restricted job sandbox — AF-007 implementation checkpoint
 
-AF-007 is in progress, not accepted or complete. The preliminary nine-property feasibility checkpoint is retained as `tests/sandbox/feasibility.py`. Local broker integration tests supplement that evidence. Architecture manifests are pinned in `sandbox/images.json`, and a mandatory separate Ubuntu 24.04 CI job is configured. Native Linux AMD64 execution remains unverified. Hosted secure pulls passed, but image identity verification exposed missing optional Docker metadata; the corrected independent identity chain still requires hosted verification. The local macOS registry/runtime prerequisite remains unresolved. Do not use this checkpoint for hostile or business workloads.
+AF-007 is in progress, not accepted or complete. The preliminary nine-property feasibility checkpoint is retained as `tests/sandbox/feasibility.py`. Local broker integration tests supplement that evidence. Architecture manifests are pinned in `sandbox/images.json`, and a mandatory separate Ubuntu 24.04 CI job is configured. Linux AMD64 passed secure image identity verification, all 14 broker integration tests, and all nine feasibility properties in run 39711100025. This is Linux-only evidence; macOS ARM64 secure runtime validation remains outstanding. Do not use this checkpoint for hostile or business workloads.
 
 ## Trust and scope
 

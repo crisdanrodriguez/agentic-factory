@@ -212,3 +212,34 @@ preserved and macOS ARM64 remains outstanding.
 Local results for this correction: lint, strict typecheck, build, dependency
 verification and whitespace checks passed; unit tests 69/69, dependency tests
 7/7, tooling tests 121/121, with zero failures, skips or cancellations.
+
+## Hosted Linux AMD64 verification — 2026-10-22 UTC
+
+Commit `2ae71bda2d8c03f1371532493e62fc2e313b1398` passed both jobs in
+[run 39711100025](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39711100025).
+The complete security preflight passed on Engine 29.9.2, containerd v2.4.2 and
+runc 1.5.2 with the unchanged reviewed packages and Go builds. Image identity
+verification passed before any sandbox test executed: locked index and AMD64
+manifest, configuration
+`sha256:1be4eb165f7f86db2f8daadef8aada18637b5da6781c7191f4d359021ee7076a`,
+linux/amd64, and four layers.
+
+Exact results: dependency tests 7/7; unit tests 69/69; tooling tests 121/121;
+PostgreSQL compatibility four assertions; state 5/5; queue/recovery 8/8;
+simulations 24/24; broker integration 14/14; feasibility properties 9/9.
+All executed suites had zero failures and skips. Lint, strict typecheck, build,
+migrations, role setup, and both profile validation demonstrations passed.
+
+The first broker integration case verified AppArmor inside the actual project
+process. Feasibility independently reported `docker-default (enforce)` process
+confinement, tested resource ceilings/enforcement, network denial, child-tree
+cancellation, interruption/recovery and private IPC. Adversarial output and
+cleanup-pending/reconciliation tests passed. Logs confirmed no checkpoint
+containers remained; the unconditional cleanup step confirmed registered
+containers and temporary directory/socket resources absent.
+
+This establishes Linux AMD64 evidence for the reviewed synthetic tests only.
+It does not prove general hostile-workload safety or cross-platform completion.
+macOS ARM64 remains outstanding; previous offline records remain preliminary.
+No merge, deployment, real provider integration, or AF-023 work is authorized
+by this result.

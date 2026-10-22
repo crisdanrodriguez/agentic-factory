@@ -1,6 +1,6 @@
-# Restricted job sandbox — AF-007 Linux verification and review
+# Restricted job sandbox — AF-007 Linux verification and acceptance
 
-Linux AMD64 implementation and verification are completed for the exact reviewed runtime and synthetic test scope. The owner accepted that evidence from [run 39711328227](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39711328227) at commit `5845cdd0a3ac35f15fc6b859c34376244ffe6c20`. Final human acceptance and merge remain pending. macOS ARM64 validation is outstanding; normal broker startup rejects ARM64, including Engine 29.9.1 and 29.9.2. Historical offline ARM64 evidence is preserved solely as preliminary evidence. This is not general hostile-workload or production security certification.
+Linux AMD64 implementation and verification are completed for the exact reviewed runtime and synthetic test scope. The owner accepted that evidence from [run 39711328227](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39711328227) at commit `5845cdd0a3ac35f15fc6b859c34376244ffe6c20`. The owner accepted this limited scope; PR #3 was squash-merged in `df1f4f5` and [main workflow 39724230244](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39724230244) passed. macOS ARM64 validation is outstanding; normal broker startup rejects ARM64, including Engine 29.9.1 and 29.9.2. Historical offline ARM64 evidence is preserved solely as preliminary evidence. This is not general hostile-workload or production security certification.
 
 ## Trust and scope
 
@@ -66,7 +66,7 @@ env -i PATH="$PATH" node dist/runtime/sandbox-broker.js start /absolute/private/
 
 Recovery refuses to clear a lock while its recorded PID exists, including a reused PID. Do not blindly delete journals, locks, sockets, containers, volumes, or unrelated workloads. The recovery command clears only the verified dead-process lock and owned socket; normal startup then reconciles the journal. Automatic service supervision and automatic stale-lock recovery are not implemented at this checkpoint. If cleanup remains pending, restore Docker availability and restart/reconcile; preserve evidence until removal is confirmed.
 
-## Verification and pending acceptance
+## Verification and limited acceptance
 
 ```sh
 export AF_DOCKER_SOCKET=/absolute/path/to/local/docker.sock
@@ -74,11 +74,11 @@ export AF_SANDBOX_IMAGE=python@sha256:98ce6fb13b3803744fbca11434f00818f1e300e4e4
 npm run test:sandbox
 ```
 
-The historical local ARM64 checkpoint is preliminary only. The mandatory Ubuntu 24.04 job has now passed secure image preparation, 14 broker integration tests and all nine feasibility properties on Linux AMD64. Tests fail when required capabilities are absent; they do not skip unavailable checks. Final human acceptance and merge are pending. Use only the reviewed synthetic scope; macOS ARM64 remains unsupported for normal broker execution.
+The historical local ARM64 checkpoint is preliminary only. The mandatory Ubuntu 24.04 job has now passed secure image preparation, 14 broker integration tests and all nine feasibility properties on Linux AMD64. Tests fail when required capabilities are absent; they do not skip unavailable checks. The owner accepted this limited scope; PR #3 was squash-merged in `df1f4f5` and [main workflow 39724230244](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39724230244) passed. Use only the reviewed synthetic scope; macOS ARM64 remains unsupported for normal broker execution.
 
 The installation preflight command is `npm run sandbox:image`. It refuses registry operations before contacting a registry unless the reviewed Engine TLS baseline passes, then pulls the pinned index for the native architecture and verifies the complete index/manifest/configuration chain and available content. `npm run sandbox:image -- --offline` reports preliminary local metadata and exits unsuccessfully because it cannot satisfy the fresh registry-backed identity gate. The broker API never pulls an image itself. CI runs the online gate as a required step; an incompatible runner fails rather than bypassing the gate. A patched runner/runtime remains an installation prerequisite, not an automatic privileged host upgrade.
 
-## Pinned Linux CI provisioning (implementation pending hosted verification)
+## Pinned Linux CI provisioning (verified on main)
 
 The sandbox job uses an isolated GitHub-hosted `ubuntu-24.04` AMD64 runner. It does not use or upgrade the owner's Docker Desktop. `scripts/provision-sandbox-ci.sh` refuses other host environments and installs only these exact packages:
 

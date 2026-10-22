@@ -1,9 +1,9 @@
 # Trust boundaries and privacy — AF-001–007
 
-## AF-007 review status and supported execution boundary
+## AF-007 acceptance status and supported execution boundary
 
 Linux AMD64 implementation and synthetic verification are completed on the exact
-reviewed runtime. Final human acceptance and merge are pending. Normal broker
+reviewed runtime. The owner accepted this limited scope; PR #3 was squash-merged in `df1f4f5` and main CI passed. Normal broker
 execution rejects ARM64 and every other unverified platform; macOS ARM64
 validation remains outstanding. This is not general hostile-workload or
 production security certification. See SANDBOX.md and AF007_VERIFICATION.md

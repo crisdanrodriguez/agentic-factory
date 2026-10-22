@@ -1,9 +1,9 @@
 # Agentic Factory — Backlog, Revision 2.1 (Telegram Priority Amendment)
 
-**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`, with a successful main-branch GitHub Actions run confirmed by the owner. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. Later tickets remain unimplemented.
+**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`, with a successful main-branch GitHub Actions run confirmed by the owner. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. AF-007 is accepted and merged for its reviewed Linux AMD64 synthetic scope. AF-023 is the active local-intake increment; other later tickets remain unimplemented.
 AF-001 through AF-028 remain from revision 2. AF-029 and AF-030 are new Telegram tickets; all previous acceptance criteria are preserved. Numbering alone does not define execution order. See the stage table in the master plan.
 
-**Accepted first increment:** AF-001, AF-002, and AF-003. **Current approved increment:** AF-007 only; Linux AMD64 implementation and verification completed, accepted and squash-merged in `df1f4f5`; main CI passed. macOS ARM64 validation remains outstanding. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
+**Accepted first increment:** AF-001, AF-002, and AF-003. **Current approved increment:** AF-023 local intake (active; implementation under review). AF-007: Linux AMD64 implementation and verification completed, accepted and squash-merged in `df1f4f5`; main CI passed. macOS ARM64 validation remains outstanding. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
 
 Web extensions and the nontechnical experience are separate roadmap branches. Telegram is an early optional input/control channel and does not block the first useful software and research workflows without messaging. AF-029 follows AF-023 and precedes GitHub/Codex adapter development; AF-030 follows the versioned approval engine in AF-012. If earlier implementations already exist, review their evidence before accepting or reopening a ticket.
 
@@ -321,13 +321,13 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 2  
 **Dependencies:** AF-006, AF-007  
-**Status:** Pending implementation/verification
+**Status:** Active — implemented locally; verification and human review recorded in `AF023_VERIFICATION.md`. Not merged.
 
 **Acceptance Criteria**
 
-- [ ] Accept a request from a file/CLI, validate it, and associate it with an owner/project; GitHub/Linear is not mandatory.
-- [ ] Preserve original content and revision; reuse the same domain model as the integrations.
-- [ ] File reads are limited to authorized paths; a request does not itself grant permissions, compute resources, or publication rights.
+- [x] Accept a request from a file/CLI, validate it, and associate it with an owner/project; GitHub/Linear is not mandatory.
+- [x] Preserve original content and revision; reuse the same domain model as the integrations.
+- [x] File reads are limited to authorized paths; a request does not itself grant permissions, compute resources, or publication rights.
 
 **Evidence:** actual changes and commands, traceable results, tests not run, and limitations. No implicit merges, publication, paid resources, or deployment.
 

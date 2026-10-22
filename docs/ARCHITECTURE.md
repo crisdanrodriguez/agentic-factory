@@ -1,4 +1,4 @@
-# Architecture — AF-001–006
+# Architecture — accepted Core Engine and sandbox; AF-023 intake under review
 
 ## Milestone 2 implementation status
 
@@ -26,7 +26,7 @@ The future nontechnical goals-and-results interface is separate from this techni
 
 ## Module boundaries
 
-`cli` parses arguments, `runtime` composes validation, `adapters` reads local JSON, and `core` owns contracts and pure constraints. `ports` defines AgentRuntime, JobExecutor, and ArtifactStore interfaces. Their synthetic implementations exercise contracts only; real execution and artifact storage remain future work. Core imports no provider SDKs, filesystem APIs, or transport clients.
+`cli` parses arguments, `runtime` composes validation, `adapters` reads local JSON, and `core` owns contracts and pure constraints. `ports` defines AgentRuntime, JobExecutor, and ArtifactStore interfaces. Synthetic implementations exercise the Core Engine contracts. AF-007 separately provides the accepted restricted Linux AMD64 job sandbox for synthetic verification; general production execution and ArtifactStore remain unimplemented. Core imports no provider SDKs, filesystem APIs, or transport clients.
 
 Use one private TypeScript package, strict compilation, JSON configuration, ESLint, and Node's terminating test runner. Runtime schema validation checks untrusted JSON before use. Exact toolchain versions and a lockfile are recorded in AF-002. No empty packages or workflow DSL are introduced. Database migrations belong to the persistent engine; real provider implementations remain deferred.
 
@@ -47,7 +47,7 @@ Telegram is the first planned external control channel after AF-007/AF-023 and t
 ## Pending decisions
 
 - MIT is the current repository license, as recorded in the existing `LICENSE`, which is preserved unchanged. Any future licensing change is an owner decision.
-- Persistence uses pinned pg 8.23.1, pg-boss 12.38.0, and node-pg-migrate 9.0.0. Sandbox technology, retention defaults, and real provider capabilities remain later decisions.
+- Persistence uses pinned pg 8.23.1, pg-boss 12.38.0, and node-pg-migrate 9.0.0. AF-007 uses the reviewed Docker backend for its limited Linux AMD64 scope. Retention defaults and real provider capabilities remain later decisions.
 - Broader runtime/OS support and remote hosting require actual validation. No production, publication, spending, or organization access is authorized by this scaffold.
 
 ## Final review corrections
@@ -57,3 +57,7 @@ The synthetic composition binds an installation-selected organization/project sc
 Synthetic completion uses its persisted deterministic schedule: completion strictly before the deadline wins even when reconciliation occurs after the deadline. At or beyond the deadline without earlier completion, the fake fails. Terminal outcomes remain stable on repeated inspection. This timing rule is exclusive to the fake; a real executor must obtain reliable external completion evidence.
 
 New completion commands require artifact references in `kind:identifier` form, with kinds `source`, `report`, or `experiment-artifacts`. Identifiers contain 1–128 ASCII letters/digits/dots/underscores/hyphens and start with a letter or digit. References must be unique and cover every required deliverable kind. Valid reference metadata does not prove physical existence, integrity, or scientific validity; actual storage verification remains AF-024. Historical audit records are not rewritten. Old temporary synthetic journals without scope are rejected rather than silently trusted.
+
+## AF-023 local intake (active increment)
+
+The local CLI adapter resolves trusted installation scope and records the existing WorkItem contract through `WorkItemStore` and a separate PostgreSQL intake adapter. New intake tables use forced RLS, authenticated role memberships, SQL owner/actor checks, immutable originals and actor-scoped receipts. No profile, plan, Run, queue operation, provider, or sandbox is created. Intake is not execution authorization. See `LOCAL_INTAKE.md` for the exact boundary and `AF023_VERIFICATION.md` for evidence.

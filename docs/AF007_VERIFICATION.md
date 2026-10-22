@@ -1,6 +1,27 @@
-# AF-007 local implementation checkpoint — 2026-10-21
+# AF-007 verification record
 
-## Status
+## Current pre-merge status
+
+Linux AMD64 implementation and verification are completed for the exact reviewed
+runtime and synthetic test scope. The owner accepted the evidence in
+[run 39711328227](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39711328227)
+at `5845cdd0a3ac35f15fc6b859c34376244ffe6c20`. Final human acceptance and merge
+remain pending. Normal broker execution now rejects every unverified platform,
+including ARM64 with Engine 29.9.1 or 29.9.2. macOS ARM64 validation is outstanding.
+There is no general hostile-workload or production security certification.
+
+The following dated entries preserve historical statements as they were recorded;
+earlier pending statuses and offline results do not describe current authorization.
+The platform-boundary regression asserts rejection after the read-only /info
+request, before image or execution access. The verified AMD64 baseline is unchanged.
+Local pre-merge checks passed: lint, strict typecheck, build, dependency-patch
+verification, 70/70 unit tests, 7/7 dependency tests, 121/121 tooling tests, and
+git diff --check. Native database and sandbox checks require the hosted runner;
+no local macOS Docker installation was changed.
+
+## Historical local implementation checkpoint — 2026-10-21
+
+### Status
 
 AF-007 is not complete or accepted. Offline implementation and local ARM64 checks have progressed, but online image provisioning is blocked by the installed Engine 29.9.1 TLS prerequisite. Native Linux AMD64 execution and the newly configured hosted sandbox job have not run. No commit, push, merge, publication, deployment, or AF-023 implementation occurred.
 

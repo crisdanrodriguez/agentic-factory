@@ -5,7 +5,7 @@
 AF-001–003 are accepted and merged. AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. PostgreSQL stores workflow and revision metadata; pg-boss owns durable claims, retries, and expiration; synthetic adapters exercise both profiles. The accepted declaration correction remains explicit and checksum-guarded. See `MILESTONE_2_VERIFICATION.md` and `DATABASE.md`. Bootstrap validation remains independently usable without database access.
 
 
-Revision 2.1 of `MASTER_PLAN.md` is the approved baseline. Agentic Factory will develop software and computational experiments with versioned evidence and human oversight. The accepted baseline includes contracts, configuration validation, a local validation CLI, and persistent synthetic workflows. Real agents, real experiments, and external actions remain outside the accepted baseline. AF-007 job sandbox implementation is in progress and is not yet accepted.
+Revision 2.1 of `MASTER_PLAN.md` is the approved baseline. Agentic Factory will develop software and computational experiments with versioned evidence and human oversight. The accepted baseline includes contracts, configuration validation, a local validation CLI, and persistent synthetic workflows. Real agents, real experiments, and external actions remain outside the accepted baseline. AF-007 job sandbox implementation and synthetic verification are completed on the reviewed Linux AMD64 runtime; final human acceptance and merge are pending. Normal broker execution rejects unverified ARM64 runtimes. macOS ARM64 validation is outstanding; no general hostile-workload or production security certification is claimed.
 
 ## Initial profiles
 

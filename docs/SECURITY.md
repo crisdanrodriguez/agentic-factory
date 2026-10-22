@@ -1,11 +1,26 @@
-# Trust boundaries and privacy — AF-001–006
+# Trust boundaries and privacy — AF-001–007
+
+## AF-007 review status and supported execution boundary
+
+Linux AMD64 implementation and synthetic verification are completed on the exact
+reviewed runtime. Final human acceptance and merge are pending. Normal broker
+execution rejects ARM64 and every other unverified platform; macOS ARM64
+validation remains outstanding. This is not general hostile-workload or
+production security certification. See SANDBOX.md and AF007_VERIFICATION.md
+for exact versions, hosted evidence, trust boundaries and remaining limitations.
+
+AF-007 adds a separate trusted broker, private authenticated Unix channel,
+trusted scope/policy grants, bounded non-root network-disabled job containers,
+AppArmor process checks, cancellation and durable cleanup/recovery. Coordinator
+credentials and Docker control remain outside project containers. This job
+boundary is distinct from future network-capable Agent Runtime implementations.
 
 ## Milestone 2 implementation status
 
 AF-001–003 are accepted and merged. AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. PostgreSQL stores workflow and revision metadata; pg-boss owns durable claims, retries, and expiration; synthetic adapters exercise both profiles. The accepted declaration correction remains explicit and checksum-guarded. See `MILESTONE_2_VERIFICATION.md` and `DATABASE.md`. Bootstrap validation remains independent of the persistent simulation.
 
 
-The sections below distinguish current controls from future requirements. Durable simulation approval records exist; target execution isolation and end-user authentication do not.
+The sections below describe the accepted Milestone 2 simulation baseline, separately from the AF-007 review status above. Durable simulation approval records exist; target execution isolation and end-user authentication do not.
 
 | Input or component | Threat | Boundary or requirement |
 |---|---|---|

@@ -66,7 +66,7 @@ test('sandbox preflight fails closed for missing isolation controls and unsuppor
   await assert.rejects(runtimePreflight(new MissingControls('/synthetic-unavailable.sock')));
   class OldRuntime extends DockerApi {
     override async json(_method: string, path: string): Promise<unknown> {
-      return path === '/info' ? { OSType: 'linux', Architecture: 'aarch64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=apparmor,profile=default', 'name=seccomp', 'name=cgroupns'] } :
+      return path === '/info' ? { OSType: 'linux', Architecture: 'x86_64', CgroupVersion: '2', DefaultRuntime: 'runc', SecurityOptions: ['name=apparmor,profile=default', 'name=seccomp', 'name=cgroupns'] } :
         { Components: [{ Name: 'Engine', Version: '28.4.0' }, { Name: 'runc', Version: '1.2.5' }] };
     }
   }
@@ -151,4 +151,28 @@ test('sandbox wraps project execution in isolated Python without interpolating t
     }
   }
   assert.equal(await new DockerRuntime(new Fixture('/synthetic.sock'), 'synthetic').createExecution('synthetic', command), 'a'.repeat(64));
+});
+
+
+test('sandbox preflight rejects every unverified platform before further runtime access', async () => {
+  const { DockerApi, runtimePreflight } = await import('../src/adapters/sandbox/docker-api.js');
+  for (const [os, architecture, engine] of [
+    ['linux', 'aarch64', '29.9.1'], ['linux', 'aarch64', '29.9.2'],
+    ['linux', 'arm64', '29.9.2'], ['linux', 'amd64', '29.9.2'],
+    ['linux', 'ppc64le', '29.9.2'], ['darwin', 'x86_64', '29.9.2'],
+    ['windows', 'x86_64', '29.9.2'],
+  ]) {
+    const calls: string[] = [];
+    class Fixture extends DockerApi {
+      override async json(method: string, path: string): Promise<unknown> {
+        assert.equal(method, 'GET');
+        calls.push(path);
+        return path === '/info' ? { OSType: os, Architecture: architecture, CgroupVersion: '2', DefaultRuntime: 'runc',
+          SecurityOptions: ['name=apparmor,profile=default', 'name=seccomp,profile=builtin', 'name=cgroupns'] } :
+          { Components: [{ Name: 'Engine', Version: engine }, { Name: 'containerd', Version: 'v2.4.2' }, { Name: 'runc', Version: '1.5.2' }] };
+      }
+    }
+    await assert.rejects(runtimePreflight(new Fixture('/synthetic.sock')));
+    assert.deepEqual(calls, ['/info'], 'Unsupported platform must stop before image or execution access');
+  }
 });

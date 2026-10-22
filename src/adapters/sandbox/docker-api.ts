@@ -35,16 +35,16 @@ export class DockerError extends Error {
   constructor(readonly status: number) { super(`Docker operation failed (${status}).`); }
 }
 const version = z.object({ Components: z.array(z.object({ Name: z.string(), Version: z.string() })) });
-const info = z.object({ OSType: z.literal('linux'), Architecture: z.enum(['aarch64', 'x86_64']), CgroupVersion: z.literal('2'),
+const info = z.object({ OSType: z.literal('linux'), Architecture: z.literal('x86_64'), CgroupVersion: z.literal('2'),
   DefaultRuntime: z.literal('runc'), SecurityOptions: z.array(z.string()) });
-export async function runtimePreflight(api: DockerApi): Promise<'arm64' | 'amd64'> {
+export async function runtimePreflight(api: DockerApi): Promise<'amd64'> {
   const details = info.parse(await api.json('GET', '/info'));
   const components = version.parse(await api.json('GET', '/version')).Components;
-  // Preserve the historical ARM64 offline baseline; native AMD64 requires the reviewed fixed release.
+  // Only the verified Linux AMD64 platform is authorized; historical ARM64 evidence is not execution authorization.
   const engine = components.find((c) => c.Name === 'Engine')?.Version;
   const runc = components.find((c) => c.Name === 'runc')?.Version;
   const containerd = components.find((c) => c.Name === 'containerd')?.Version;
-  const supportedEngine = engine === '29.9.2' || (details.Architecture === 'aarch64' && engine === '29.9.1');
+  const supportedEngine = engine === '29.9.2';
   if (!supportedEngine || runc !== '1.5.2' || (containerd !== '2.4.2' && containerd !== 'v2.4.2'))
     throw new Error('Unsupported Docker security baseline; review runtime versions before execution.');
   if (!details.SecurityOptions.some((s) => s.startsWith('name=seccomp')) || !details.SecurityOptions.includes('name=cgroupns'))
@@ -52,5 +52,5 @@ export async function runtimePreflight(api: DockerApi): Promise<'arm64' | 'amd64
   const apparmor = details.SecurityOptions.filter((option) => option.toLowerCase().includes('apparmor'));
   if (apparmor.length !== 1 || apparmor[0] !== 'name=apparmor,profile=default')
     throw new Error('Required built-in AppArmor profile is unavailable or unreviewed.');
-  return details.Architecture === 'aarch64' ? 'arm64' : 'amd64';
+  return 'amd64';
 }

@@ -177,3 +177,38 @@ cancellations. Native Linux preflight, immutable image preparation, 14 broker
 integration tests, nine feasibility properties, and PostgreSQL suites require
 hosted verification; no local Docker runtime was started. Hosted outcomes must
 be reported separately. macOS ARM64 validation remains outstanding.
+
+## Approved independent image identity correction — 2026-10-21
+
+Diagnostic run [39699029294](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39699029294)
+established absent local Descriptor fields, correct linux/amd64, the exact locked
+index RepoDigest, four local layers, and a registry child configuration digest
+equal to local image ID
+`sha256:1be4eb165f7f86db2f8daadef8aada18637b5da6781c7191f4d359021ee7076a`.
+Inspection by child reference was unavailable locally. The previous gate failed
+on missing optional metadata, not a demonstrated wrong download.
+
+The correction uses the reviewed Docker CLI's original-payload digest checks,
+with a fresh private configuration to exclude manifest-cache substitution.
+See SANDBOX.md for source attribution and the complete validation model.
+No image locks, package pins, TLS settings, Core Engine, schema or provider
+contracts change. Offline mode cannot pass the fresh identity gate.
+
+| Acceptance requirement | Maintained test/evidence |
+| --- | --- |
+| Observed AMD64 chain; absent/valid/conflicting optional descriptors | immutable identity chain cases in tests/sandbox-tools.test.mjs |
+| Index, child, configuration, repository, OS and architecture relationships | wrong/crossed identity cases |
+| OCI schema/media types; missing/duplicate platform; malformed and missing content | schema, descriptor, layer and missing-evidence cases |
+| Registry failure; fresh private config cleanup; no container execution | fresh image identity verification fixtures |
+| Offline cannot authorize or access registry | offline metadata test |
+| Actual secure image preparation before project execution | mandatory sandbox:image step followed by sandbox suite in hosted CI |
+| AppArmor process confinement and cleanup | existing broker integration and nine-property feasibility suite; unconditional CI cleanup |
+
+Local commands: npm run lint, npm run typecheck, npm run build, npm test,
+npm run test:deps, npm run test:sandbox-tools, git diff --check.
+Hosted execution results are reported separately; historical offline evidence is
+preserved and macOS ARM64 remains outstanding.
+
+Local results for this correction: lint, strict typecheck, build, dependency
+verification and whitespace checks passed; unit tests 69/69, dependency tests
+7/7, tooling tests 121/121, with zero failures, skips or cancellations.

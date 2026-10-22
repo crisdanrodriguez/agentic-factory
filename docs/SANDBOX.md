@@ -1,6 +1,6 @@
 # Restricted job sandbox — AF-007 implementation checkpoint
 
-AF-007 is in progress, not accepted or complete. The preliminary nine-property feasibility checkpoint is retained as `tests/sandbox/feasibility.py`. Local broker integration tests supplement that evidence. Architecture manifests are pinned in `sandbox/images.json`, and a mandatory separate Ubuntu 24.04 CI job is configured. Native Linux AMD64 execution and online image preparation remain unverified because the local registry TLS prerequisite is unresolved. Do not use this checkpoint for hostile or business workloads.
+AF-007 is in progress, not accepted or complete. The preliminary nine-property feasibility checkpoint is retained as `tests/sandbox/feasibility.py`. Local broker integration tests supplement that evidence. Architecture manifests are pinned in `sandbox/images.json`, and a mandatory separate Ubuntu 24.04 CI job is configured. Native Linux AMD64 execution remains unverified. Hosted secure pulls passed, but image identity verification exposed missing optional Docker metadata; the corrected independent identity chain still requires hosted verification. The local macOS registry/runtime prerequisite remains unresolved. Do not use this checkpoint for hostile or business workloads.
 
 ## Trust and scope
 
@@ -76,7 +76,7 @@ npm run test:sandbox
 
 The fixture digest above is local ARM64 evidence only. Tests require a real runtime and fail if configuration or capabilities are absent. They do not skip unavailable checks. Use only synthetic local resources. Native Linux AMD64 execution, the configured mandatory Ubuntu 24.04 CI job, online image preparation, and remaining adversarial acceptance tests must pass before AF-007 can be marked complete.
 
-The installation preflight command is `npm run sandbox:image`. It refuses registry operations before contacting a registry unless the reviewed Engine TLS baseline passes, then pulls the pinned index for the native architecture and verifies the manifest descriptor and available content. `npm run sandbox:image -- --offline` verifies existing local content only and explicitly does not clear registry TLS readiness. The broker API never pulls an image itself. CI runs the online gate as a required step; an incompatible runner fails rather than bypassing the gate. A patched runner/runtime remains an installation prerequisite, not an automatic privileged host upgrade.
+The installation preflight command is `npm run sandbox:image`. It refuses registry operations before contacting a registry unless the reviewed Engine TLS baseline passes, then pulls the pinned index for the native architecture and verifies the complete index/manifest/configuration chain and available content. `npm run sandbox:image -- --offline` reports preliminary local metadata and exits unsuccessfully because it cannot satisfy the fresh registry-backed identity gate. The broker API never pulls an image itself. CI runs the online gate as a required step; an incompatible runner fails rather than bypassing the gate. A patched runner/runtime remains an installation prerequisite, not an automatic privileged host upgrade.
 
 ## Pinned Linux CI provisioning (implementation pending hosted verification)
 
@@ -151,3 +151,37 @@ workspace modules from shadowing the confinement checks. The wrapper uses the ex
 dependency. This does not establish macOS ARM64 compatibility: historical offline
 results remain preliminary, and the required AppArmor baseline must not be
 silently omitted on Docker Desktop.
+
+## Independent immutable image identity chain
+
+The locked repository, index and platform manifests remain unchanged. The online
+gate pulls the exact index with the selected platform, requires its exact local
+RepoDigests reference, and retrieves the locked index and child manifest using
+Docker CLI 29.9.2 with verified TLS. A fresh private CLI configuration prevents
+local manifest-cache substitution and excludes inherited registry credentials.
+It is removed in a finally block, including on retrieval/validation failure.
+
+The reviewed [CLI retrieval source](https://github.com/docker/cli/blob/v29.9.2/internal/registryclient/fetcher.go)
+calls validateManifestDigest for both lists and individual manifests, comparing
+the requested digest with the manifest payload digest; configuration blobs are
+also digest-verified. The [inspect command](https://github.com/docker/cli/blob/v29.9.2/cli/command/manifest/inspect.go)
+uses that path when no local manifest cache exists. CLI output is formatted
+(and index output reconstructed); this project never hashes that output as
+original OCI bytes. CLI index retrieval may read other children within the
+same locked public repository. No dependency, registry, or insecure option is added.
+
+The validator requires OCI schema version 2, approved OCI media types, exactly
+one Linux descriptor for the selected architecture matching the locked child,
+and child configuration identity matching the local image ID. Local platform,
+RootFS layer type, valid nonzero layer evidence, and corresponding manifest
+layer count must match. Compressed registry layer digests are not local RootFS
+diff IDs and are not compared as if interchangeable.
+
+A missing local Descriptor is allowed only with the complete independently
+verified chain. A present Descriptor must identify the locked index with the
+index media type or the selected locked child with the manifest media type;
+conflicting/malformed descriptors fail. Missing registry evidence fails closed.
+Offline metadata is preliminary and cannot authorize execution. Local content
+availability relies on the reviewed Docker pull/inspect implementation; these
+checks do not prove process confinement, workload safety, or scientific validity.
+macOS ARM64 validation remains outstanding.

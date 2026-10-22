@@ -1,6 +1,6 @@
 # Agentic Factory
 
-**Status: AF-001–003 accepted and merged in `4a0ce53`.** AF-004–006 are implemented and locally verified, pending human review. See [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md). The two profiles run through synthetic end-to-end simulations using local PostgreSQL. No real agents, ML training, GitHub integration, or Telegram bot are implemented.
+**Status: AF-001–003 accepted and merged in `4a0ce53`.** AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. See [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md). The two profiles run through synthetic end-to-end simulations using local PostgreSQL. No real agents, ML training, GitHub integration, or Telegram bot are implemented.
 
 Agentic Factory is intended to be an open-source, self-hosted, provider-agnostic system that transforms authorized ideas and tasks into verifiable project outcomes. Initial profiles: general software and computational ML research. Pull requests, web deployments, and publication are optional project-specific actions. A future guided experience may support nontechnical consumers.
 

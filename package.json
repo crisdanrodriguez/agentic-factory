@@ -24,7 +24,11 @@
     "deps:patch": "node scripts/apply-dependency-patches.mjs",
     "deps:check": "node scripts/apply-dependency-patches.mjs --check",
     "test:deps": "node --test --test-reporter=spec tests/dependency-patch.test.mjs",
-    "test:simulations": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/simulations/*.test.js"
+    "test:simulations": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/simulations/*.test.js",
+    "test:sandbox-tools": "node --test --test-reporter=spec tests/sandbox-tools.test.mjs",
+    "test:sandbox": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/sandbox/*.test.js && python3 tests/sandbox/feasibility.py",
+    "sandbox:broker": "node dist/runtime/sandbox-broker.js",
+    "sandbox:image": "node scripts/prepare-sandbox-image.mjs"
   },
   "dependencies": {
     "node-pg-migrate": "9.0.0",

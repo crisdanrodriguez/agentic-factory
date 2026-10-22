@@ -1,6 +1,6 @@
 # Local PostgreSQL setup — Milestone 2
 
-AF-004–006 are implemented and locally verified, pending human review. The explicit pg-boss declaration patch remains required. See `MILESTONE_2_VERIFICATION.md` for acceptance mapping, exact outputs, and limitations; `CORE_ENGINE_VERIFICATION.md` preserves earlier checkpoints and patch-removal instructions.
+AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. The explicit pg-boss declaration patch remains required. See `MILESTONE_2_VERIFICATION.md` for acceptance mapping, exact outputs, and limitations; `CORE_ENGINE_VERIFICATION.md` preserves earlier checkpoints and patch-removal instructions.
 
 ## Tested local dependencies
 
@@ -71,4 +71,4 @@ Stopping preserves the named volume. Automatic destructive down migrations are i
 
 The hosted workflow now provisions a fresh PostgreSQL 18.6 service per job, with the pinned image digest and synthetic-only credentials. It runs the explicit dependency patch and check, lint, strict typecheck, unit tests/build, application migrations, restricted local-role setup, queue setup, compatibility tests, state/isolation tests, queue/recovery tests, and simulations. Required steps have no conditional skip or failure suppression. Database service health or setup failures fail the job.
 
-The same setup and test sequence was verified locally on a fresh separate Compose project, `agentic-factory-review-ci`, leaving the original volume untouched. The hosted workflow itself has not been executed. See `MILESTONE_2_REVIEW_CORRECTIONS.md` for current results and the negative database-unavailable check.
+The same setup and test sequence was verified locally on a fresh separate Compose project, `agentic-factory-review-ci`, leaving the original volume untouched. At that historical checkpoint the hosted workflow had not been executed. The owner subsequently confirmed a successful main-branch run after the merge at `2705aac`; no run URL or ID has been independently verified in this session. See `MILESTONE_2_REVIEW_CORRECTIONS.md` for current results and the negative database-unavailable check.

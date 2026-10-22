@@ -53,3 +53,32 @@ jobs:
       - run: node dist/cli/index.js --help
       - run: node dist/cli/index.js validate fixtures/software-general.json
       - run: node dist/cli/index.js validate fixtures/ml-research.json
+
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      AF_SANDBOX_TEST_ROOT: /tmp/af007-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      TMPDIR: /tmp/af007-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      AF_DOCKER_SOCKET: /var/run/docker.sock
+      AF_SANDBOX_IMAGE: python@sha256:98ce6fb13b3803744fbca11434f00818f1e300e4e48a4f204e07b2c928b6218e
+    steps:
+      - run: mkdir -m 700 "$AF_SANDBOX_TEST_ROOT"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+      - run: npm install --global npm@11.9.0 --ignore-scripts --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run deps:patch
+      - run: npm run deps:check
+      - run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_WORKSPACE bash scripts/provision-sandbox-ci.sh
+      - run: npm run build
+      - run: npm run test:sandbox-tools
+      - run: npm run sandbox:image
+      - run: npm run test:sandbox
+      - name: Clean sandbox test resources
+        if: always()
+        run: python3 scripts/cleanup-sandbox-ci.py

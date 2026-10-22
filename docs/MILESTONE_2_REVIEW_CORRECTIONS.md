@@ -1,5 +1,7 @@
 # Milestone 2 final review corrections — 2026-10-19
 
+> Acceptance update (2026-10-21): AF-004–006 were accepted and merged in `2705aac`. The owner confirmed that GitHub Actions on main passed. The historical evidence and limitations below describe their original checkpoints; no hosted run URL or ID has been independently verified in this session.
+
 ## Scope and status
 
 The four approved review findings are corrected within AF-004–006. The complete local suite passed on a fresh, isolated PostgreSQL database. Human review is pending. No AF-007 work, provider integration, real training, commit, push, merge, publication, or deployment occurred.

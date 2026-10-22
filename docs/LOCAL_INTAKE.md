@@ -1,6 +1,6 @@
 # AF-023 — Local WorkItem intake
 
-AF-023 is the active increment, implemented for review. Intake records a request; it does not authorize execution. No GitHub, Linear, Telegram, AI provider, sandbox, plan, profile, or workflow Run is required. Both software and ML requests use the existing WorkItem contract with `origin.kind = "local"`.
+AF-023 is accepted and merged in `ce55b8d`; both required main CI jobs passed. See `AF023_VERIFICATION.md` for exact acceptance evidence. Intake records a request; it does not authorize execution. No GitHub, Linear, Telegram, AI provider, sandbox, plan, profile, or workflow Run is required. Both software and ML requests use the existing WorkItem contract with `origin.kind = "local"`.
 
 ## Install and configure
 

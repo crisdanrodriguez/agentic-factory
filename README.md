@@ -10,7 +10,7 @@ The first prioritized external control channel is **Telegram**, after the persis
 
 ## Start here
 
-Read [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the local bootstrap commands and [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) for the longer-term plan. The accepted baseline includes **AF-001 through AF-007**, with AF-007 limited to its reviewed Linux AMD64 synthetic scope. **AF-023 local intake is the active increment under review**. Keep implementation separate from any existing MOLVEX or ADDIV repository.
+Read [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the local bootstrap commands and [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) for the longer-term plan. The accepted baseline includes **AF-001 through AF-007**, with AF-007 limited to its reviewed Linux AMD64 synthetic scope. **AF-023 local intake is accepted and merged in `ce55b8d`**, with both required [main CI jobs](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39737704211) passing. No next implementation increment has been initiated. Keep implementation separate from any existing MOLVEX or ADDIV repository.
 
 Use the tested Node.js 24 LTS version `24.22.0` and npm `11.9.0`, then run:
 
@@ -51,6 +51,6 @@ No code should be committed, pushed, merged, published, or deployed merely becau
 
 The current repository license is [MIT](LICENSE). The existing license is preserved; any future licensing change is an owner decision.
 
-### Local WorkItem intake (AF-023, active review)
+### Local WorkItem intake (AF-023, accepted and merged)
 
 Use `work-item create`, `work-item revise`, and `work-item show` with an operator-configured project and authenticated PostgreSQL role. Intake requires no ticket service, AI provider, or running sandbox and grants no execution rights. See [setup and usage](docs/LOCAL_INTAKE.md) and [verification](docs/AF023_VERIFICATION.md).

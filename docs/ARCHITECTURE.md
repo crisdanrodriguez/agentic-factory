@@ -1,4 +1,4 @@
-# Architecture — accepted Core Engine and sandbox; AF-023 intake under review
+# Architecture — accepted Core Engine, sandbox and local intake
 
 ## Milestone 2 implementation status
 
@@ -58,6 +58,6 @@ Synthetic completion uses its persisted deterministic schedule: completion stric
 
 New completion commands require artifact references in `kind:identifier` form, with kinds `source`, `report`, or `experiment-artifacts`. Identifiers contain 1–128 ASCII letters/digits/dots/underscores/hyphens and start with a letter or digit. References must be unique and cover every required deliverable kind. Valid reference metadata does not prove physical existence, integrity, or scientific validity; actual storage verification remains AF-024. Historical audit records are not rewritten. Old temporary synthetic journals without scope are rejected rather than silently trusted.
 
-## AF-023 local intake (active increment)
+## AF-023 local intake (accepted and merged)
 
-The local CLI adapter resolves trusted installation scope and records the existing WorkItem contract through `WorkItemStore` and a separate PostgreSQL intake adapter. New intake tables use forced RLS, authenticated role memberships, SQL owner/actor checks, immutable originals and actor-scoped receipts. No profile, plan, Run, queue operation, provider, or sandbox is created. Intake is not execution authorization. See `LOCAL_INTAKE.md` for the exact boundary and `AF023_VERIFICATION.md` for evidence.
+AF-023 is merged in `ce55b8d` with both required main CI jobs passing. The local CLI adapter resolves trusted installation scope and records the existing WorkItem contract through `WorkItemStore` and a separate PostgreSQL intake adapter. New intake tables use forced RLS, authenticated role memberships, SQL owner/actor checks, immutable originals and actor-scoped receipts. No profile, plan, Run, queue operation, provider, or sandbox is created. Intake is not execution authorization. See `LOCAL_INTAKE.md` for the exact boundary and `AF023_VERIFICATION.md` for evidence.

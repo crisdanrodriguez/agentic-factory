@@ -1,8 +1,37 @@
 # AF-023 implementation and local verification
 
-Status: active increment, implemented and locally verified; human acceptance and merge remain pending. The owner authorized a Draft PR for hosted verification. This document preserves the local checkpoint; current hosted evidence is recorded in that PR. No subsequent ticket is included.
+Status: accepted by the owner after independent review for the approved local intake scope; PR #5 was squash-merged into main as `ce55b8d72dd7317dff44d1fa4ba9ea66d50ef6ae`. Both required main CI jobs passed. No subsequent ticket has been initiated.
 
-Base: verified main `a9f73c29e4632397d83cacbdf820d46e18d04f4f` (PR #4). Main workflow [39725289981](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39725289981) passed before this increment. Work is isolated on `feat/af-023-local-intake`.
+## Acceptance and main-branch verification — 2026-10-22
+
+- Reviewed head: `4d4c1f14505ea1d23c92201be2eeaa83f114d5d8`.
+- [PR #5](https://github.com/crisdanrodriguez/agentic-factory/pull/5) retained that exact head, one expected commit and the reviewed 22 files immediately before merge. Both mandatory jobs were successful; no blocking reviews, unresolved review threads or new issue comments were present.
+- The PR was marked ready and squash-merged with an exact-head guard, without an administrator override or protection bypass. Merge time: `2026-10-22T07:01:47Z`.
+- `git diff --exit-code 4d4c1f14505ea1d23c92201be2eeaa83f114d5d8 origin/main` returned exit 0 after fetching merge `ce55b8d72dd7317dff44d1fa4ba9ea66d50ef6ae`: the merged tree matched the reviewed implementation exactly.
+- [PR workflow 39732609731](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39732609731) and [main workflow 39737704211](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39737704211) both passed `checks` and `sandbox` at their respective exact commits. Main logs were inspected independently; this is not an inference from PR results.
+
+| Main verification | Actual result |
+|---|---|
+| Explicit dependency patch/check; lint; strict typecheck; build | Passed |
+| Dependency tests | 7 passed |
+| Unit/regression tests | 81 passed |
+| Application migrations, local roles and queue setup | Passed |
+| PostgreSQL compatibility | 4 PASS assertions |
+| State/isolation tests | 5 passed |
+| Queue/recovery tests | 8 passed |
+| Intake tests | 10 passed |
+| Simulations | 24 passed |
+| CLI help and both profile validations | Passed |
+| Sandbox tooling | 121 passed |
+| Sandbox broker integration | 14 passed |
+| Maintained feasibility properties | 9 passed |
+| Unconditional sandbox cleanup | Passed; registered containers and test directory/socket resources absent |
+
+All counted test suites reported zero failed, cancelled or skipped tests. Linux security preflight verified Engine `29.9.2` / Go `1.26.10`, containerd `v2.4.2` / Go `1.27.3`, runc `1.5.2`, cgroup v2, AppArmor and seccomp. The locked OCI index, selected AMD64 manifest and local configuration chain passed with TLS enabled. Actual project-process `docker-default (enforce)` confinement passed. This remains evidence for the reviewed Linux AMD64 runtime and synthetic execution scope only; macOS ARM64 sandbox validation is outstanding and normal execution remains blocked there.
+
+Acceptance grants no execution, publication, deployment, AI activation or broader runtime authority. Original request retention and explicit `show` output remain sensitive; trusted host/OS account, non-privileged database roles, private storage and the documented ACL assumptions still apply. Historical local evidence and limitations below are preserved.
+
+Base: verified main `a9f73c29e4632397d83cacbdf820d46e18d04f4f` (PR #4). Main workflow [39725289981](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39725289981) passed before this increment. Implementation was prepared on `feat/af-023-local-intake` before the squash merge.
 
 ## Scope and schema
 
@@ -63,7 +92,7 @@ Tests below are in `tests/database/intake.test.ts` unless noted.
 
 ## Remaining evidence and limitations
 
-At the original local checkpoint the branch had not been published and there was no hosted AF-023 CI result. Publication for Draft PR verification was subsequently authorized; consult the PR checks for results at its exact head. The mandatory `checks` job now runs intake integration tests after database initialization; missing database/setup or a test failure fails CI. The existing mandatory sandbox job and its unconditional cleanup are unchanged.
+At the original local checkpoint the branch had not been published and there was no hosted AF-023 CI result. Publication for Draft PR verification was subsequently authorized; the acceptance section above now records the verified PR and merged main results. The mandatory `checks` job now runs intake integration tests after database initialization; missing database/setup or a test failure fails CI. The existing mandatory sandbox job and its unconditional cleanup are unchanged.
 
 Actual sandbox broker integration/feasibility tests were not rerun locally: this host is ARM64 and normal broker execution remains deliberately blocked on unverified platforms. The 121 tooling tests are offline evidence, not fresh image pulls or container confinement verification. Historical accepted AF-007 Linux evidence remains in `AF007_VERIFICATION.md`. macOS ARM64 secure sandbox validation remains outstanding; this intake test result does not change that status.
 

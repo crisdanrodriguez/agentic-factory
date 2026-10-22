@@ -32,6 +32,50 @@ if (!offline) {
   }
 }
 const [metadata] = JSON.parse(docker('image', 'inspect', '--platform', `linux/${architecture}`, image));
+// Diagnostic evidence only: the validation predicates below remain authoritative and unchanged.
+const emit = (name, value) => console.log('IMAGE_DIAGNOSTIC ' + JSON.stringify({ name, value }));
+const bounded = (value) => typeof value === 'string' ? value.slice(0, 512) : null;
+const descriptor = (value) => ({ digest: bounded(value?.digest), mediaType: bounded(value?.mediaType),
+  platform: { architecture: bounded(value?.platform?.architecture), os: bounded(value?.platform?.os), variant: bounded(value?.platform?.variant) } });
+const summarize = (value) => ({
+  Architecture: bounded(value?.Architecture), Os: bounded(value?.Os),
+  Descriptor: descriptor(value?.Descriptor), Id: bounded(value?.Id),
+  RepoDigests: Array.isArray(value?.RepoDigests) ? value.RepoDigests.filter((ref) => typeof ref === 'string' && ref.includes('@sha256:')).slice(0, 32).map(bounded) : [],
+  RootFS: { Type: bounded(value?.RootFS?.Type), layerCount: Array.isArray(value?.RootFS?.Layers) ? value.RootFS.Layers.length : null },
+  manifestsExposed: Array.isArray(value?.Manifests),
+  Manifests: Array.isArray(value?.Manifests) ? value.Manifests.slice(0, 32).map((entry) => ({
+    Descriptor: descriptor(entry.Descriptor), Available: typeof entry.Available === 'boolean' ? entry.Available : null,
+    Kind: bounded(entry.Kind), Id: bounded(entry.ID),
+  })) : [],
+});
+emit('expected', { index: lock.index, manifest: lock.manifests[architecture], platform: 'linux/' + architecture });
+emit('selectedLocalImage', summarize(metadata));
+emit('existingGateComparisons', { architecture: metadata.Architecture === architecture, os: metadata.Os === 'linux',
+  descriptorEqualsManifest: metadata.Descriptor?.digest === lock.manifests[architecture] });
+const diagnose = (name, args, project) => {
+  try { emit(name, { available: true, evidence: project(JSON.parse(docker(...args))) }); }
+  catch (error) {
+    // Do not dump arbitrary command output/configuration; diagnostic failure never changes the image gate.
+    emit(name, { available: false, exitStatus: Number.isInteger(error.status) ? error.status : null,
+      reason: error instanceof SyntaxError ? 'Invalid JSON response' : 'Read-only inspection unavailable' });
+  }
+};
+diagnose('localIndex', ['image', 'inspect', image], (rows) => summarize(rows[0]));
+diagnose('localLockedManifest', ['image', 'inspect', '--platform', 'linux/' + architecture,
+  lock.repository + '@' + lock.manifests[architecture]], (rows) => summarize(rows[0]));
+if (!offline) {
+  // Existing Docker CLI only, exact digest references, default verified TLS, no insecure flag.
+  diagnose('registryLockedIndex', ['manifest', 'inspect', image], (value) => ({
+    mediaType: bounded(value.mediaType),
+    selectedPlatformDescriptors: Array.isArray(value.manifests) ? value.manifests.filter((entry) =>
+      entry.platform?.architecture === architecture && entry.platform?.os === 'linux').slice(0, 32).map(descriptor) : [],
+  }));
+  diagnose('registryLockedManifest', ['manifest', 'inspect', lock.repository + '@' + lock.manifests[architecture]], (value) => ({
+    mediaType: bounded(value.mediaType), config: descriptor(value.config),
+    layerCount: Array.isArray(value.layers) ? value.layers.length : null,
+    configurationEqualsLocalId: value.config?.digest === metadata.Id,
+  }));
+}
 if (metadata.Architecture !== architecture || metadata.Os !== 'linux' || metadata.Descriptor?.digest !== lock.manifests[architecture])
   throw new Error('Pinned environment content or platform is unavailable or mismatched.');
 if (!/^sha256:[a-f0-9]{64}$/.test(metadata.Id ?? '') || !metadata.RootFS?.Layers?.length || metadata.RootFS.Type !== 'layers')

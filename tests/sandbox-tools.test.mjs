@@ -15,7 +15,13 @@ const scenario = process.env.SCENARIO;
 if(args.includes('version')) console.log(JSON.stringify({Components:[{Name:'Engine',Version:scenario==='old'?'29.9.1':'29.9.2'}]}));
 else if(args.includes('info')) console.log(JSON.stringify({Architecture:'x86_64',OSType:'linux',RegistryConfig:{Mirrors:[],IndexConfigs:{},InsecureRegistryCIDRs:scenario==='insecure'?['0.0.0.0/0']:[]}}));
 else if(args.includes('pull')) { if(scenario==='tls') {console.error('x509: certificate signed by unknown authority');process.exit(1);} }
-else if(args.includes('image')) console.log(JSON.stringify([{Architecture:'amd64',Os:'linux',Id:'sha256:'+'a'.repeat(64),RootFS:{Type:'layers',Layers:['sha256:'+'b'.repeat(64)]},Descriptor:{digest:scenario==='mismatch'?'sha256:'+'c'.repeat(64):'sha256:08b493e9c2f92a0f84e45062338a1503d0f585d63ba8783baad5a24cdf200894'}}]));
+else if(args.includes('manifest')) {
+ if(scenario==='diagnostic-unavailable') process.exit(1);
+ const child='sha256:08b493e9c2f92a0f84e45062338a1503d0f585d63ba8783baad5a24cdf200894';
+ console.log(JSON.stringify(args.at(-1).endsWith(child)?{mediaType:'application/vnd.oci.image.manifest.v1+json',config:{digest:'sha256:'+'a'.repeat(64)},layers:[{}]}:
+ {mediaType:'application/vnd.oci.image.index.v1+json',manifests:[{digest:child,mediaType:'application/vnd.oci.image.manifest.v1+json',platform:{architecture:'amd64',os:'linux'}}]}));
+}
+else if(args.includes('image')) console.log(JSON.stringify([{Architecture:'amd64',Os:'linux',Id:'sha256:'+'a'.repeat(64),RootFS:{Type:'layers',Layers:['sha256:'+'b'.repeat(64)]},Config:{Env:['SYNTHETIC_PRIVATE_SENTINEL']},RepoDigests:['python@sha256:98ce6fb13b3803744fbca11434f00818f1e300e4e48a4f204e07b2c928b6218e'],Descriptor:{mediaType:'application/vnd.oci.image.index.v1+json',digest:scenario==='index-descriptor'?'sha256:98ce6fb13b3803744fbca11434f00818f1e300e4e48a4f204e07b2c928b6218e':scenario==='mismatch'?'sha256:'+'c'.repeat(64):'sha256:08b493e9c2f92a0f84e45062338a1503d0f585d63ba8783baad5a24cdf200894'}}]));
 else if(args.includes('ps')) {if(scenario==='cleanup-failure'){console.error('daemon unavailable');process.exit(1);} }
 `;
   writeFileSync(join(directory, 'docker'), docker, { mode: 0o700 });
@@ -199,3 +205,36 @@ for (const [description, changes, valid] of [
     assert.equal(result.status, valid ? 0 : 1, result.stderr);
   });
 }
+
+
+for (const scenario of ['valid', 'index-descriptor', 'diagnostic-unavailable']) {
+  test(`image identity diagnostics preserve the existing gate: ${scenario}`, () => fixture(({ env, log }) => {
+    const result = spawnSync(process.execPath, ['scripts/prepare-sandbox-image.mjs'], {
+      env: { ...env, SCENARIO: scenario }, encoding: 'utf8' });
+    assert.equal(result.status, scenario === 'index-descriptor' ? 1 : 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /SYNTHETIC_PRIVATE_SENTINEL/);
+    const evidence = Object.fromEntries(result.stdout.split('\n').filter((line) => line.startsWith('IMAGE_DIAGNOSTIC '))
+      .map((line) => { const row = JSON.parse(line.slice('IMAGE_DIAGNOSTIC '.length)); return [row.name, row.value]; }));
+    assert.equal(evidence.selectedLocalImage.Architecture, 'amd64');
+    assert.equal(evidence.selectedLocalImage.RootFS.layerCount, 1);
+    assert.equal(evidence.existingGateComparisons.descriptorEqualsManifest, scenario !== 'index-descriptor');
+    assert.equal(evidence.registryLockedManifest.available, scenario !== 'diagnostic-unavailable');
+    if (scenario !== 'diagnostic-unavailable') {
+      assert.equal(evidence.registryLockedManifest.evidence.configurationEqualsLocalId, true);
+      assert.equal(evidence.registryLockedIndex.evidence.selectedPlatformDescriptors[0].digest, evidence.expected.manifest);
+    }
+    const calls = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+    for (const args of calls.filter((args) => args.includes('manifest'))) {
+      assert.match(args.at(-1), /^python@sha256:[a-f0-9]{64}$/);
+      assert.ok(!args.includes('--insecure'));
+    }
+    assert.ok(!calls.some((args) => args.includes('run') || args.includes('create')));
+  }));
+}
+test('offline image identity diagnostics do not contact the registry', () => fixture(({ env, log }) => {
+  const result = spawnSync(process.execPath, ['scripts/prepare-sandbox-image.mjs', '--offline'], {
+    env: { ...env, SCENARIO: 'valid' }, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(log, 'utf8');
+  assert.doesNotMatch(calls, /"manifest"|"pull"/);
+}));

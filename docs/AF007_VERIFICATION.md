@@ -1,6 +1,36 @@
 # AF-007 verification record
 
-## Current pre-merge status
+## Accepted and merged — 2026-10-22 UTC
+
+AF-007 is accepted only for the exact reviewed Linux AMD64 synthetic execution
+scope. PR #3 was marked ready and squash-merged without bypassing protections.
+Immediately before merging, head
+`a329bef10ff94055bcaf6e6c0be7b72d1068b15a` was unchanged, both mandatory jobs
+remained successful, the 11 commits and 35 files matched review, and no blocking
+reviews or unresolved review threads existed.
+
+Merge SHA: `df1f4f5d9a4365cfe63a92e3f4a78e44697c67e8`.
+Its tree exactly matches the reviewed PR head. The automatic push workflow on
+main, [39724230244](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39724230244),
+passed both mandatory jobs, including migrations, setup and compatibility.
+
+Exact main results: unit 70/70, dependency 7/7, tooling 121/121, state 5/5,
+queue/recovery 8/8, simulations 24/24, broker integration 14/14, and feasibility
+9/9; four PostgreSQL compatibility assertions passed. Lint, strict typecheck,
+build, immutable image identity, full security preflight, actual project-process
+AppArmor confinement and unconditional cleanup passed. No tests failed, skipped
+or were cancelled; cleanup confirmed no checkpoint containers or registered
+temporary directory/socket resources remained.
+
+macOS ARM64 validation is outstanding and normal broker execution rejects it.
+Historical offline ARM64 evidence remains preliminary. This acceptance is not
+production or general hostile-workload security certification. No platform was
+enabled, production workload authorized, or AF-023 implementation started.
+
+Earlier entries below preserve their original pending statuses and measured
+results as historical evidence; this section states the current acceptance.
+
+## Historical pre-merge status
 
 Linux AMD64 implementation and verification are completed for the exact reviewed
 runtime and synthetic test scope. The owner accepted the evidence in

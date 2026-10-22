@@ -2,6 +2,8 @@
 
 **Status: AF-001–003 accepted and merged in `4a0ce53`.** AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. See [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md). The two profiles run through synthetic end-to-end simulations using local PostgreSQL. No real agents, ML training, GitHub integration, or Telegram bot are implemented.
 
+AF-007 is accepted and merged in `df1f4f5` for the exact reviewed Linux AMD64 synthetic execution scope. Both required [main CI jobs](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39724230244) passed. macOS ARM64 remains unverified and blocked from normal broker execution; no production or general hostile-workload security certification is claimed. See [the acceptance record](docs/AF007_VERIFICATION.md).
+
 Agentic Factory is intended to be an open-source, self-hosted, provider-agnostic system that transforms authorized ideas and tasks into verifiable project outcomes. Initial profiles: general software and computational ML research. Pull requests, web deployments, and publication are optional project-specific actions. A future guided experience may support nontechnical consumers.
 
 The first prioritized external control channel is **Telegram**, after the persistent workflow engine and local WorkItem intake are implemented. Users will connect their own Telegram bot; no account, API key, organization, or externally hosted service is needed for the initial docs/CLI scaffold.

@@ -1,7 +1,7 @@
 # Agentic Factory — Master Plan, Revision 2.1 (Telegram Priority Amendment)
 
 **Status:** revision 2.1 specification; AF-001–003 accepted and merged in `4a0ce53`. Milestone 2 (AF-004–006) is accepted and merged in `2705aac`, with the successful main-branch GitHub Actions run confirmed by the owner; see `MILESTONE_2_VERIFICATION.md`. The accepted baseline provides configuration validation and persistent synthetic workflows, not a complete executing Factory. Revision 2 remains the product baseline; 2.1 changes Telegram implementation priority only.
-**Current increment:** AF-023 local WorkItem intake is approved and active; implementation remains under review. AF-007 is accepted for the reviewed Linux AMD64 synthetic scope only; macOS ARM64 sandbox validation remains outstanding. See `LOCAL_INTAKE.md` and `AF023_VERIFICATION.md`.
+**Latest accepted increment:** AF-023 local WorkItem intake is merged in `ce55b8d`; both required main CI jobs passed in run `39737704211`. No next implementation increment has been initiated. AF-007 is accepted for the reviewed Linux AMD64 synthetic scope only; macOS ARM64 sandbox validation remains outstanding. See `LOCAL_INTAKE.md` and `AF023_VERIFICATION.md`.
 
 **Guiding change:** develop projects and experiments with verifiable deliverables, rather than exclusively developing web applications or processing tickets that must end in a pull request or deployment.  
 **Document scope:** supersedes the previous revision for work not yet implemented. It does not establish that repositories, accounts, or infrastructure have been changed.  

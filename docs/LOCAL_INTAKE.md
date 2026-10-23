@@ -82,6 +82,10 @@ The operator must not grant additional untrusted access through ACLs or share th
 
 Original content may contain secrets. It remains private in PostgreSQL and backups, accessible to authorized project readers. This increment provides no retention deletion, encryption/key-management service, large-data import, or ArtifactStore. Operator storage quotas and backup policy remain necessary; per-request limits do not bound aggregate database growth.
 
-Recording a request consumes only bounded intake processing/storage. It does not create a Run, publish queue work, approve a plan, call an agent, start a sandbox, provision compute, or publish artifacts. No AF-029 or subsequent ticket is implemented. AF-007 remains restricted to its accepted Linux AMD64 synthetic scope; macOS ARM64 sandbox validation remains outstanding.
+Recording a request consumes only bounded intake processing/storage. It does not create a Run, publish queue work, approve a plan, call an agent, start a sandbox, provision compute, or publish artifacts. The accepted AF-023 checkpoint implemented no Telegram or subsequent ticket. AF-029 now adds the optional adapter described below; it does not change this execution boundary. AF-007 remains restricted to its accepted Linux AMD64 synthetic scope; macOS ARM64 sandbox validation remains outstanding.
 
 See `AF023_VERIFICATION.md` for actual verification and acceptance mapping.
+
+## Optional Telegram channel
+
+AF-029 reuses this store and its authenticated actor/RLS model. Its additive migration allows `source_kind = "telegram"`; file and CLI behavior are preserved. A metadata-only `WorkItemStore.list` returns at most ten IDs/revisions using a project-scoped keyset cursor. PostgreSQL intake also supports caller-owned transactions on the same authenticated connection; standalone create/revise behavior still owns its transaction. See `TELEGRAM.md` for the separately started adapter, pairing, and privacy boundaries. No Telegram configuration is needed by this CLI.

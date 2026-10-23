@@ -35,6 +35,7 @@
     "test:telegram": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/telegram.test.js",
     "db:setup-slack": "node scripts/setup-local-slack.mjs",
     "slack": "node dist/cli/slack.js",
+    "slack:observe": "node dist/cli/slack-observe.js",
     "test:slack": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/slack.test.js"
   },
   "dependencies": {

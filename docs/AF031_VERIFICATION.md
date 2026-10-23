@@ -126,3 +126,30 @@ Follow-up local verification: Node 24.22.0/npm 11.9.0; isolated AF-031 PostgreSQ
 
 
 Hosted correction evidence at `e94936ea94ace27d2b325652b3d8fdabed9f0fa7`: both mandatory jobs succeeded in [PR workflow 40032281773](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/40032281773) and [push workflow 40032277081](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/40032277081). Hosted named-test counts match the 324 local tests above, plus 14/14 Linux broker tests and all nine feasibility properties. No failures or skips. Runtime preflight verified Engine 29.9.2, containerd v2.4.2, runc 1.5.2 and enforced docker-default; immutable image verification passed. Unconditional cleanup reported registered containers and test directory/socket resources absent. These results do not establish live Slack compatibility or macOS ARM64 sandbox support. This evidence-only follow-up changes no executable code; final-head workflow links are recorded in Draft PR #8.
+
+## Observation-only diagnostic publication checkpoint
+
+This checkpoint extends the historical 324-test protocol-correction checkpoint; it does not replace or reinterpret that evidence. The initial local observer checkpoint had 336 passing tests (104 unit/CLI tests, including 12 observer cases). Final publication review adds one lifecycle test, for **337 passing tests**, including **105 unit/CLI tests and 13 observer cases**. No live Slack calls occurred.
+
+The separate `slack:observe -- --synthetic-only` entry point reads private observer configuration, verifies auth.test identity and hello app identity, and consumes at most three exact synthetic-marker DMs from a preconfigured human/channel. Safe projection completes before acknowledgment; projection output follows local acknowledgment completion. Incompatible metadata is observable but does not authorize intake. Nonmatching events, identity errors, uncertain transport results and timeouts stop without a successful observation claim. Production intake/schema, migrations, grants, dependencies and AF-029 remain unchanged.
+
+Review inspected every output path and the complete source import graph: observer CLI/runtime, private-file helper, core contracts/intake schema helpers, Slack schema, API port, HTTPS and socket transports. No PostgreSQL client, WorkItemStore, SlackStore, pairing, outbox or workflow component is imported or initialized. The shared HTTPS class has a reply method, but the observer runner receives only identity/open operations and never calls send. Third-party dependencies remain the pinned zod/ws graph and Node built-ins; no dependency change or installation hook was added.
+
+The overall observation timer begins before auth.test, covers all network phases including acknowledgment, and excludes the preceding bounded local configuration read. Review added a cancellation check before each event read and a regression covering stalled open/connect/hello/ack phases. Finally blocks clear the timer, abort transport work and close the socket. The reviewed socket clears buffered events. Memory is not persisted; JavaScript/transport buffers and environment strings are not guaranteed to be zeroized. Dedicated process shutdown and private credential cleanup remain operator responsibilities.
+
+Actual local commands/results (Node 24.22.0/npm 11.9.0, isolated AF-031 PostgreSQL):
+
+| Command | Result |
+| --- | --- |
+| `npm run db:migrate` twice; four existing synthetic setup commands | Exit 0; no migrations pending |
+| `npm run deps:check`, `lint`, `typecheck`, `build` | Exit 0 |
+| `npm run test:deps` | 7/7 |
+| `npm test` | 105/105 |
+| `npm run test:compatibility` | Four PASS checkpoints |
+| `npm run test:state`, `test:queue`, `test:intake` | 5/5, 8/8, 10/10 |
+| `npm run test:telegram`, `test:slack` | 28/28, 29/29 |
+| `npm run test:simulations`, `test:sandbox-tools` | 24/24, 121/121 |
+| Both existing CLI profile validation commands | Valid |
+| `git diff --check` | Exit 0 |
+
+No failed, cancelled or skipped tests. The isolated test database was stopped afterward. Full Linux sandbox execution remains a hosted gate; macOS restrictions remain. Hosted results for this increment must be recorded against the published head in Draft PR #8; no live observation is claimed. `AF031_LIVE_ACCEPTANCE.md` defines separately authorized A/B stages and diagnostic consumption semantics. The observer does not relax missing-sharing or non-bot authorization restrictions for normal intake.

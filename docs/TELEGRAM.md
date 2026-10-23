@@ -108,7 +108,7 @@ Enforced conservative bounds:
 | HTTP | Fixed `api.telegram.org:443`, verified TLS, no redirects/fallback endpoint; 524,288 response bytes; 40-second total request deadline |
 | Polling | 25-second long poll, 20 updates per batch, three transport attempts per tick with bounded backoff |
 | Commands | Ten per rolling minute, token bucket burst three, one token per six seconds; state persists across restart |
-| Processing | Three attempts per update; savepoint rollback preserves atomicity on failure |
+| Processing | At most three attempts per update; database-clock delays of 60 seconds then 300 seconds; savepoint rollback preserves atomicity on failure |
 | Replies | 2,048 bytes; three persisted send attempts; bounded retry delay up to 3,600 seconds |
 | Channel retention | 1,000 update receipts and at most one outbox row per update; 20,000 serialized payload bytes per row |
 
@@ -119,3 +119,24 @@ Rate-limited commands are recorded as consumed without a reply or WorkItem; the 
 Fake API tests never contact Telegram. Real PostgreSQL tests use only synthetic identities and content, including killed child processes and session termination. CI must run `db:setup-telegram` and `test:telegram` in addition to all existing suites; no live token is needed. See `AF029_VERIFICATION.md` for exact results and acceptance mapping.
 
 A future live development-bot acceptance test requires explicit owner authorization and credentials. It must check actual identity/webhook handling, pending pairing plus local confirmation, one synthetic `/new`, duplicate/restart recovery, metadata-only status/list, and revocation. It must not execute the request or authorize subsequent milestones. No bot creation, token acquisition, or live API call is included in this increment's verification.
+
+## Durable processing retry correction
+
+Migration `004-telegram-processing-retries.cjs` is additive; migration 003 is unchanged. Stop the adapter, run `npm run db:migrate` with the separate migration identity, then restart it. Fresh installations apply both migrations; existing installations apply only 004. Previously attempted pending updates receive a conservative 300-second delay at upgrade. Existing exhausted receipts remain exhausted: this migration does not replay or resurrect requests. Existing RLS and grants are unchanged (table-level update privileges cover the new columns).
+
+Processing retries are independent of reply delivery retries. An operational failure rolls back the WorkItem, intake receipt, rate-limit debit, and outbox writes to the savepoint. The attempt count, redacted `failure_kind=processing`, and next eligibility timestamp commit together. If the database session or transaction itself fails, the transaction rolls back and the adapter stops; recovery must reconnect before processing. No exception text is persisted.
+
+The first and second failed processing attempts schedule eligibility after 60 and 300 seconds respectively, using PostgreSQL time. The third failed attempt becomes exhausted and clears its private payload. Unknown operational failures, including persistent database constraints and membership errors, follow this same bounded policy. Known malformed commands are terminal validation results: they are consumed once with the existing generic invalid-command reply, rather than retried. Authorization is rechecked on every eligible attempt; a revoked generation cannot create a WorkItem.
+
+Selection is ascending update ID **among eligible updates**, not strict global arrival order. A delayed update does not block independent later commands. Consequently a status/list command can precede an earlier delayed request's eventual creation. Polling may continue while retries wait; offsets still advance only after durable capture, not processing success. Polling latency and downtime may delay retries further; there is no exact-time execution guarantee. The 1,000-receipt cap and fail-closed behavior are unchanged.
+
+A trusted database operator with existing read access can inspect only metadata:
+
+```sql
+SELECT installation_id, update_id, state, attempts, next_attempt_at, failure_kind
+FROM factory.telegram_updates
+WHERE state IN ('pending', 'exhausted')
+ORDER BY installation_id, update_id;
+```
+
+Use the existing bot-scoped or privileged operator connection; this correction grants no new administrator table access. Do not select payloads or log connection strings. Exhaustion is not success and does not automatically replay; an operator must investigate before asking the human to submit another request. Request bodies are not disclosed in failure metadata.

@@ -17,7 +17,7 @@ export class TelegramRunner {
   async recover(): Promise<void> {
     if (!this.ready) fail('Telegram runner is not ready.');
     // Bounded work per tick; receipts and attempts survive interruption.
-    for (let n = 0; n < 60 && await this.store.processOne(); n++) { /* Drain captured operations before polling. */ }
+    for (let n = 0; n < 60 && await this.store.processOne(); n++) { /* Drain eligible operations; delayed retries do not block independent updates. */ }
     for (let n = 0; n < 20; n++) {
       const reply = await this.store.prepareReply();
       if (!reply) break;

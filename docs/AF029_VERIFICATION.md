@@ -1,6 +1,6 @@
 # AF-029 verification record
 
-## Status and baseline
+## Historical local checkpoint and baseline
 
 AF-029 is implemented locally on `feat/af-029-telegram-control`, based on verified main `023d32c64c36f720d77a7330453610884592e303`. Local verification on 2026-10-22 passed the commands below. Human acceptance, publication/hosted checks, and the separately authorized live development-bot test remain pending. No merge, deployment, live Telegram API call, bot creation, token acquisition, or subsequent milestone was performed.
 
@@ -117,3 +117,20 @@ A small privacy correction hashes every enrollment-shaped `/start CODE` payload,
 All commands in the local-results table were rerun for publication using Node 24.22.0/npm 11.9.0. The final Telegram suite is now **25/25** and the total is **286 passing named cases**, with zero failures/cancellations/skips, plus the same four compatibility checkpoints and two profile demonstrations. The earlier 23/284 counts above are preserved as historical local-checkpoint evidence. Both application migration reruns exited 0 with `No migrations to run!`. All three setup scripts exited 0. A fresh, uniquely named disposable database was also used to apply migrations 001–003 and rerun them; five enabled/forced-RLS channel tables were verified, then that review database was removed. Existing local data was preserved. The first temporary migration-review harness omitted `migrationsTable` and failed with `relation "public.undefined" does not exist`; its database was cleaned up. Supplying the required option fixed that harness-only error; no project migration changed.
 
 Hosted evidence for the published head will be recorded in the Draft PR and review handoff. The initial local-checkpoint statements about no commit/publication describe that earlier checkpoint; publication is now explicitly authorized. Live Telegram acceptance and macOS ARM64 sandbox validation remain outstanding.
+
+## Independent review correction: durable processing retries
+
+The reviewed publication commit `63681a6cb5043b336e7f403694123faf920f0e80` passed both required jobs in [PR run 39884781054](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39884781054). Independent review subsequently found immediate processing retry exhaustion. This correction adds migration 004 and database-clock eligibility, without changing migration 003, RLS, permissions, polling capture, or reply retry policy. See `TELEGRAM.md` for ordering, upgrade instructions, and metadata-only operator diagnosis. Human acceptance and live testing remain pending; no live API calls were made.
+
+Local correction verification used Node 24.22.0/npm 11.9.0 and synthetic PostgreSQL. Every command in the historical local-results table passed again: dependency 7, unit/CLI 86, state 5, queue 8, intake 10, Telegram **28**, simulations 24, sandbox tooling 121: **289 named tests**, zero failures/cancellations/skips. Lint, strict typecheck, build, four compatibility checkpoints, both profile validations, and `git diff --check` passed. Setup scripts passed. Migration 004 applied to the existing 003 database and reran with no migrations. A separate temporary database applied 001–004, reran with none, verified all five channel tables retain enabled/forced RLS, and was removed. No local runtime sandbox execution was attempted: macOS ARM64 remains unverified and disabled. Hosted Linux sandbox verification must pass on the updated PR head; its exact run is recorded in the review handoff.
+
+| Correction requirement | Actual maintained PostgreSQL test evidence |
+| --- | --- |
+| First failure deferred; no immediate recovery exhaustion; persisted eligibility across restart; independent later update; idempotent successful recovery; unchanged offset | `AF-029 delayed processing retry survives restart and recovers atomically without duplicates` |
+| Persistent failure reaches three-attempt exhaustion only after explicit eligibility; WorkItem/receipt rollback; 60/300-second deadlines | `AF-029 receipt and WorkItem writes roll back together on outbox failure; retries exhaust` |
+| Known permanent input validation consumes one attempt without operational retries | `AF-029 permanent invalid input is consumed once without operational retries` |
+| Delayed work cannot bypass revocation | `AF-029 revocation fences a delayed processing retry` |
+| Membership loss, existing intake/reply revocation boundaries | `AF-029 revocation fences captured operations and pending replies; lost membership fails closed` |
+| Retention cap, duplicate/conflicting capture, polling recovery | Existing mandatory Telegram retention and cursor tests remain unchanged and passing |
+
+Tests advance only synthetic retry timestamps through the migration connection; application code always uses PostgreSQL time. No sleeping or shortened production retry intervals are required. Persistent unknown operational errors are deliberately not classified from sensitive exception text; they use the bounded three-attempt schedule. Exhausted records are not automatically revived by upgrade.

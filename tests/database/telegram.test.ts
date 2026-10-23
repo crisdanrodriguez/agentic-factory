@@ -133,7 +133,7 @@ test('AF-029 revocation fences captured operations and pending replies; lost mem
     await f.bot.capture([message(3,request)]); await f.admin.revoke(); await f.bot.processOne(); assert.equal(await count(f),1); assert.equal(await f.bot.prepareReply(),null);
     await pair(f,4); await f.bot.capture([message(5,request)]);
     await f.db.query("UPDATE factory.memberships SET can_write=false WHERE database_role='af_telegram_bot'");
-    for (let n=0;n<3;n++) await f.bot.processOne(); assert.equal(await count(f),1);
+    for (let n=0;n<3;n++) { await makeEligible(f); await f.bot.processOne(); } assert.equal(await count(f),1);
     await assert.rejects(f.bot.capture([message(6,request)]),/membership/);
     assert.equal((await f.db.query('SELECT state FROM factory.telegram_updates WHERE update_id=5')).rows[0].state,'exhausted');
   } finally { await f.close(); }
@@ -171,7 +171,12 @@ test('AF-029 receipt and WorkItem writes roll back together on outbox failure; r
     await f.bot.start(); await pair(f); await f.bot.capture([message(2,request)]);
     // A valid but conflicting synthetic outbox row causes the final insert to fail after intake.
     await f.db.query("INSERT INTO factory.telegram_outbox (installation_id,update_id,generation,chat_id,body) VALUES ($1,2,1,900002,'Synthetic collision')",[inst]);
-    for(let n=0;n<3;n++) { await f.bot.processOne(); assert.equal(await count(f),0); }
+    for(let n=0;n<3;n++) {
+      await makeEligible(f); await f.bot.processOne(); assert.equal(await count(f),0);
+      assert.equal(await f.bot.processOne(),false);
+      const pending = (await f.db.query('SELECT attempts,extract(epoch FROM next_attempt_at-clock_timestamp()) AS wait FROM factory.telegram_updates WHERE update_id=2')).rows[0];
+      assert.equal(pending.attempts,n+1); assert.ok(Number(pending.wait) > (n === 0 ? 55 : 295));
+    }
     const row = (await f.db.query('SELECT attempts,state FROM factory.telegram_updates WHERE update_id=2')).rows[0]; assert.deepEqual(row,{attempts:3,state:'exhausted'});
     assert.equal((await f.db.query("SELECT count(*)::int AS n FROM factory.intake_receipts WHERE actor='af_telegram_bot'")).rows[0].n,0);
   } finally { await f.close(); }
@@ -357,4 +362,56 @@ test('AF-029 revocation during an in-flight reply prevents subsequent pending de
     await runner.recover();assert.equal(api.sent.length,1);assert.equal(await count(f),2);
     assert.deepEqual((await f.db.query('SELECT state FROM factory.telegram_outbox ORDER BY update_id')).rows.map(r=>r.state),['sent','revoked']);
   } finally {await f.close();}
+});
+
+// Synthetic clock advancement through the migration role; production uses database time only.
+async function makeEligible(f: Awaited<ReturnType<typeof fixture>>) {
+  await f.db.query("UPDATE factory.telegram_updates SET next_attempt_at=clock_timestamp() WHERE installation_id=$1 AND state='pending'",[inst]);
+}
+test('AF-029 delayed processing retry survives restart and recovers atomically without duplicates', async () => {
+  const f = await fixture(); let runner: TelegramRunner | undefined;
+  try {
+    const api = new FakeApi(); runner = new TelegramRunner(f.bot,api,botId);
+    await runner.start(); await pair(f); await f.bot.capture([message(2,request)]);
+    await f.db.query("INSERT INTO factory.telegram_outbox (installation_id,update_id,generation,chat_id,body,state) VALUES ($1,2,1,900002,'Synthetic collision','sent')",[inst]);
+    await runner.recover();
+    assert.equal(await count(f),0);
+    assert.equal((await f.db.query('SELECT attempts FROM factory.telegram_updates WHERE update_id=2')).rows[0].attempts,1);
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM factory.intake_receipts WHERE actor='af_telegram_bot'")).rows[0].n,0);
+    assert.equal(await f.bot.offset(),3);
+    await runner.close();
+    const restarted = new TelegramStore(url('af_telegram_bot'),inst,'af_telegram_bot','bot');
+    runner = new TelegramRunner(restarted,api,botId); await runner.start();
+    await f.db.query('DELETE FROM factory.telegram_outbox WHERE installation_id=$1 AND update_id=2',[inst]);
+    await runner.recover();
+    assert.equal(await count(f),0);
+    assert.equal((await f.db.query('SELECT attempts FROM factory.telegram_updates WHERE update_id=2')).rows[0].attempts,1);
+    // A delayed older update does not block a newer independent request.
+    await restarted.capture([message(3,request)]); await runner.recover(); assert.equal(await count(f),1);
+    await makeEligible(f); await runner.recover(); await runner.recover();
+    await restarted.capture([message(2,request),message(3,request)]); await runner.recover();
+    assert.equal(await count(f),2); assert.equal(await restarted.offset(),4);
+    assert.equal((await f.db.query("SELECT count(*)::int AS n FROM factory.intake_receipts WHERE actor='af_telegram_bot'")).rows[0].n,2);
+    assert.deepEqual((await f.db.query('SELECT state,attempts,failure_kind FROM factory.telegram_updates WHERE update_id=2')).rows[0],{state:'done',attempts:2,failure_kind:null});
+  } finally { await runner?.close(); await f.close(); }
+});
+test('AF-029 permanent invalid input is consumed once without operational retries', async () => {
+  const f = await fixture();
+  try {
+    await f.bot.start(); await pair(f); await f.bot.capture([message(2,'/new {invalid}')]);
+    await f.bot.processOne(); assert.equal(await f.bot.processOne(),false);
+    assert.deepEqual((await f.db.query('SELECT state,attempts,failure_kind FROM factory.telegram_updates WHERE update_id=2')).rows[0],{state:'done',attempts:1,failure_kind:null});
+    assert.equal(await count(f),0);
+  } finally { await f.close(); }
+});
+test('AF-029 revocation fences a delayed processing retry', async () => {
+  const f = await fixture();
+  try {
+    await f.bot.start(); await pair(f); await f.bot.capture([message(2,request)]);
+    await f.db.query("UPDATE factory.memberships SET can_write=false WHERE database_role='af_telegram_bot'");
+    await f.bot.processOne(); assert.equal(await f.bot.processOne(),false);
+    await f.db.query("UPDATE factory.memberships SET can_write=true WHERE database_role='af_telegram_bot'");
+    await f.admin.revoke(); await makeEligible(f); await f.bot.processOne();
+    assert.equal(await count(f),0); assert.equal(await f.bot.prepareReply(),null);
+  } finally { await f.close(); }
 });

@@ -154,7 +154,7 @@ export class TelegramStore {
   async processOne(): Promise<boolean> {
     return this.transaction(async () => {
       const pair = await this.pairing();
-      const row = (await this.client.query<PendingUpdate>("SELECT update_id,generation,payload,attempts FROM factory.telegram_updates WHERE installation_id=$1 AND state='pending' ORDER BY update_id LIMIT 1 FOR UPDATE", [this.id])).rows[0];
+      const row = (await this.client.query<PendingUpdate>("SELECT update_id,generation,payload,attempts FROM factory.telegram_updates WHERE installation_id=$1 AND state='pending' AND next_attempt_at<=clock_timestamp() ORDER BY update_id LIMIT 1 FOR UPDATE", [this.id])).rows[0];
       if (!row) return false;
       await this.client.query('UPDATE factory.telegram_updates SET attempts=attempts+1 WHERE installation_id=$1 AND update_id=$2', [this.id,row.update_id]);
       await this.client.query('SAVEPOINT telegram_operation');
@@ -183,10 +183,16 @@ export class TelegramStore {
           }
         }
         if (body) await this.client.query('INSERT INTO factory.telegram_outbox (installation_id,update_id,generation,chat_id,body) VALUES ($1,$2,$3,$4,$5)', [this.id,row.update_id,row.generation,row.payload.chatId,body]);
-        await this.client.query("UPDATE factory.telegram_updates SET state='done',payload='{}' WHERE installation_id=$1 AND update_id=$2", [this.id,row.update_id]);
+        await this.client.query("UPDATE factory.telegram_updates SET state='done',payload='{}',failure_kind=NULL WHERE installation_id=$1 AND update_id=$2", [this.id,row.update_id]);
       } catch {
         await this.client.query('ROLLBACK TO SAVEPOINT telegram_operation');
-        if (row.attempts + 1 >= 3) await this.client.query("UPDATE factory.telegram_updates SET state='exhausted',payload='{}' WHERE installation_id=$1 AND update_id=$2", [this.id,row.update_id]);
+        // Do not retain error text: it may contain private request or database details.
+        await this.client.query(`UPDATE factory.telegram_updates SET
+          state=CASE WHEN attempts>=3 THEN 'exhausted' ELSE 'pending' END,
+          payload=CASE WHEN attempts>=3 THEN '{}'::jsonb ELSE payload END,
+          failure_kind='processing',
+          next_attempt_at=clock_timestamp()+($3::int * interval '1 second')
+          WHERE installation_id=$1 AND update_id=$2`, [this.id,row.update_id,row.attempts === 0 ? 60 : 300]);
       }
       return true;
     });

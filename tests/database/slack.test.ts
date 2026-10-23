@@ -206,3 +206,28 @@ test('AF-031 unverified Socket Mode app cannot trigger background recovery',asyn
   await runner.start();await assert.rejects(runner.run());assert.equal(await count(f),0);assert.equal(api.sends.length,0);
  }finally{await store?.close();await f.close();}
 });
+
+
+test('AF-031 supported documented message fields stay on one socket and retain commit-before-ack',async()=>{
+ const f=await fixture();try{
+  const runner=new SlackRunner(f.bot,new FakeApi(),async()=>{throw Error('Unexpected reconnect');});await runner.start();await pair(f);
+  const first=event('EvCOMPAT',request);
+  const enriched={...first,payload:{...first.payload,event:{...first.payload.event,event_ts:first.payload.event.ts,client_msg_id:'synthetic-client-id'},event_context:'synthetic-context'}};
+  const duplicate={...enriched,envelope_id:'synthetic-redelivery'};
+  const socket=new FakeSocket([hello,enriched,duplicate,event('EvHELP','help'),disconnect]);
+  socket.ack=async(id)=>{assert.ok((await f.db.query("SELECT 1 FROM factory.slack_updates WHERE update_id='EvCOMPAT'")).rowCount);assert.equal(await count(f),0);socket.acks.push(id);};
+  await runner.receive(socket);assert.equal(socket.acks.length,3);await runner.recover();assert.equal(await count(f),1);
+ }finally{await f.close();}
+});
+test('AF-031 ambiguous provider envelopes stop without acknowledgment or reconnect loops',async()=>{
+ const f=await fixture();try{
+  const raw=event('EvAMBIGUOUS',request);
+  // Missing sharing metadata remains unknown even for a correctly identified bot.
+  const {is_ext_shared_channel: omitted,...payload}=raw.payload;assert.equal(omitted,false);
+  const socket=new FakeSocket([hello,{...raw,payload}]);let connects=0;
+  const runner=new SlackRunner(f.bot,new FakeApi(),async()=>{connects++;return socket;});
+  await runner.start();await pair(f);await assert.rejects(runner.run());
+  assert.equal(connects,1);assert.equal(socket.closed,true);assert.equal(socket.acks.length,0);
+  assert.equal(await count(f),0);assert.equal((await f.db.query("SELECT count(*)::int AS n FROM factory.slack_updates WHERE update_id='EvAMBIGUOUS'")).rows[0].n,0);
+ }finally{await f.close();}
+});

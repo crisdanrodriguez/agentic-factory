@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { teamId,userId,slackId,channelId } from '../../core/slack.js';
 import { SlackApiError,type SlackApi } from '../../ports/slack-api.js';
 export function socketUrl(value:string):string {
- try {const u=new URL(value);if(u.protocol!=='wss:'||u.username||u.password||u.hash||(u.port&&u.port!=='443')||!/^wss-(primary|backup|[0-9]+)\.slack\.com$/.test(u.hostname)||u.pathname!=='/link/'||value.length>4096)throw Error();return value;}
+ try {const u=new URL(value);if(u.protocol!=='wss:'||u.username||u.password||u.hash||(u.port&&u.port!=='443')||!/^wss(?:-(?:primary|backup|[0-9]+))?\.slack\.com$/.test(u.hostname)||u.pathname!=='/link/'||value.length>4096)throw Error();return value;}
  catch{throw new SlackApiError('permanent');}
 }
 export function decodeSlack(bytes:Buffer,status:number,retry:string|undefined):unknown {

@@ -8,6 +8,8 @@ export const appId = slackId('A');
 export const eventId = z.string().regex(/^Ev[A-Z0-9]{2,63}$/);
 export const MAX_ENVELOPE_BYTES = 65536;
 const opaque = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
+// Authorization describes the installation, not the human message sender.
+// Missing sharing metadata is unknown, not evidence of a non-shared DM.
 export const envelopeSchema = z.object({ type:z.literal('events_api'),envelope_id:opaque,accepts_response_payload:z.boolean(),
   payload:z.object({type:z.literal('event_callback'),team_id:teamId,api_app_id:appId,event_id:eventId,
     event_time:z.number().int().nonnegative(),is_ext_shared_channel:z.literal(false),

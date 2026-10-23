@@ -24,12 +24,29 @@ test('AF-031 Web API errors are bounded, redacted and classify rate limits',()=>
  assert.throws(()=>new HttpsSlackApi('private','secret'),/Slack transport unavailable/);
 });
 test('AF-031 rotated socket URLs are accepted only on reviewed TLS endpoints',()=>{
- for(const host of ['wss-primary.slack.com','wss-backup.slack.com','wss-123.slack.com'])assert.ok(socketUrl(`wss://${host}/link/?ticket=synthetic`));
- for(const url of ['ws://wss-primary.slack.com/link/','wss://evil.example/link/','wss://wss-primary.slack.com.evil.example/link/','wss://user:secret@wss-primary.slack.com/link/','wss://wss-primary.slack.com:80/link/','wss://wss-primary.slack.com/other'])assert.throws(()=>socketUrl(url),/Slack transport unavailable/);
+ for(const host of ['wss.slack.com','wss-primary.slack.com','wss-backup.slack.com','wss-123.slack.com'])assert.ok(socketUrl(`wss://${host}/link/?ticket=synthetic`));
+ for(const url of ['ws://wss-primary.slack.com/link/','wss://evil.example/link/','wss://wss-primary.slack.com.evil.example/link/','wss://user:secret@wss-primary.slack.com/link/','wss://wss-primary.slack.com:80/link/','wss://wss-primary.slack.com/other','wss://wss.slack.com.evil.example/link/','wss://wss.evil.slack.com/link/','wss://wss-slack.com/link/','wss://wss-custom.slack.com/link/','wss://wss.slack.com/link/#fragment','wss://wss.slack.com:444/link/','wss://user@wss.slack.com/link/','ws://wss.slack.com/link/'])assert.throws(()=>socketUrl(url),/Slack transport unavailable/);
 });
 
 test('AF-031 Slack CLI stays optional and errors never expose configuration or token values',async()=>{
  const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const run=promisify(execFile);
  const help=await run(process.execPath,['.test-build/src/cli/slack.js','--help'],{env:{}});assert.match(help.stdout,/Intake only/);
  await assert.rejects(run(process.execPath,['.test-build/src/cli/slack.js','start'],{env:{FACTORY_SLACK_CONFIG:'/nonexistent/private-synthetic-file',FACTORY_SLACK_BOT_TOKEN:'synthetic-secret-do-not-echo'}}),e=>{assert.ok(e instanceof Error);assert.ok(!String(e).includes('synthetic-secret-do-not-echo'));assert.ok(!String(e).includes('/nonexistent/private-synthetic-file'));return true;});
+});
+
+// Shape adapted from Slack's message.im reference; IDs and content are synthetic.
+// No deprecated verification token is needed on the authenticated Socket Mode connection.
+test('AF-031 documented user-authorization example does not authorize the bot installation',()=>{
+ const payload={type:'event_callback',team_id:'TTEST',api_app_id:'ATEST',event:m,
+  authorizations:[{team_id:'TTEST',user_id:'UHUMAN',is_bot:false,is_enterprise_install:false}],
+  event_id:'EvEXAMPLE',event_time:1355517523};
+ const wrap=(p:unknown)=>({type:'events_api',envelope_id:'synthetic-example',accepts_response_payload:false,payload:p});
+ assert.equal(envelopeSchema.safeParse(wrap(payload)).success,false);
+ assert.equal(envelopeSchema.safeParse(wrap({...payload,is_ext_shared_channel:false})).success,false);
+ const bot={...payload,authorizations:[{team_id:'TTEST',user_id:'UBOT',is_bot:true,is_enterprise_install:false}]};
+ assert.equal(envelopeSchema.safeParse(wrap(bot)).success,false);
+ for(const sharing of [null,true,'false'])assert.equal(envelopeSchema.safeParse(wrap({...bot,is_ext_shared_channel:sharing})).success,false);
+ assert.equal(envelopeSchema.safeParse(wrap({...bot,is_ext_shared_channel:false})).success,true);
+ for(const authorizations of [[],[...bot.authorizations,...bot.authorizations],[{...bot.authorizations[0],is_enterprise_install:true}]])
+  assert.equal(envelopeSchema.safeParse(wrap({...bot,is_ext_shared_channel:false,authorizations})).success,false);
 });

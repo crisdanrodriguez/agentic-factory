@@ -104,3 +104,22 @@ This inventory covers the 25 files reviewed for publication relative to the unch
 - `tests/helpers/slack-crash.ts`
 - `tests/review-regressions.test.ts`
 - `tests/slack.test.ts`
+
+
+## Narrow protocol compatibility follow-up
+
+Historical publication checkpoint: head `0962b3ffce8234b346d0bad65e347ae8b354db00` passed both mandatory jobs in [PR run 40025518096](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/40025518096) and [push run 40025361404](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/40025361404), with the local counts above plus 14 broker integration tests and nine feasibility properties.
+
+Finding 1 is confirmed: the exact `wss.slack.com` hostname in Slack's official Socket Mode guide was rejected. The correction adds only that hostname and retains all existing transport controls. URL fixtures cover the documented hostname, existing reviewed hosts, lookalike domains, arbitrary subdomains, plaintext, userinfo, fragments, unexpected ports and paths.
+
+Finding 2 is a documented unsupported variant, not a safe reason to remove authorization predicates. The representative message.im example describes a non-bot authorization and omits sharing evidence. Both conditions remain rejected. Documentation now distinguishes that generic example from the configured bot-installation subset, and explicitly discloses the missing-sharing-field live compatibility gate. See `SLACK.md` for official references and the rule. No migrations, privileges, persistence semantics or retry policy changed.
+
+New maintained evidence:
+
+- `AF-031 documented user-authorization example does not authorize the bot installation`: synthetic adaptation of the official example; rejects human authorization, unknown/shared metadata, duplicate or enterprise authorizations; accepts the fully evidenced bot variant.
+- `AF-031 supported documented message fields stay on one socket and retain commit-before-ack`: optional ordinary fields, multiple deliveries, one canonical WorkItem, no reconnect dependency.
+- `AF-031 ambiguous provider envelopes stop without acknowledgment or reconnect loops`: missing sharing evidence causes one connection to stop with no acknowledgment or accepted receipt/work.
+
+The production change is limited to the exact hostname allowlist. Schema comments explain intentionally retained predicates. Live Slack testing remains unauthorized and no full provider compatibility claim is made.
+
+Follow-up local verification: Node 24.22.0/npm 11.9.0; isolated AF-031 PostgreSQL only. `db:migrate` twice, all four setup commands, `deps:check`, `lint`, `typecheck`, `build`, and `git diff --check` exited 0. `test:deps` 7/7; `npm test` 92/92; `test:state` 5/5; `test:queue` 8/8; `test:intake` 10/10; `test:telegram` 28/28; `test:slack` 29/29; `test:simulations` 24/24; `test:sandbox-tools` 121/121. Total 324, no failures/cancellations/skips. `test:compatibility` reported four PASS checkpoints and both software-general/ml-research CLI validations passed. Actual Linux sandbox execution remains a hosted gate, not local macOS evidence.

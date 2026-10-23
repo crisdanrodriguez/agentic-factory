@@ -1,6 +1,6 @@
 # Agentic Factory
 
-**Status: AF-001–003 accepted and merged in `4a0ce53`.** AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. See [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md). The two profiles run through synthetic end-to-end simulations using local PostgreSQL. No real agents, ML training, GitHub integration, or Telegram bot are implemented.
+**Status: AF-001–003 accepted and merged in `4a0ce53`.** AF-004–006 are accepted and merged in `2705aac`; the owner confirmed the successful main-branch GitHub Actions run. See [`docs/MILESTONE_2_REVIEW_CORRECTIONS.md`](docs/MILESTONE_2_REVIEW_CORRECTIONS.md). The two profiles run through synthetic end-to-end simulations using local PostgreSQL. No real agents, ML training, or GitHub integration are implemented. AF-029 adds an optional Telegram intake adapter; live bot verification is not yet authorized or completed.
 
 AF-007 is accepted and merged in `df1f4f5` for the exact reviewed Linux AMD64 synthetic execution scope. Both required [main CI jobs](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39724230244) passed. macOS ARM64 remains unverified and blocked from normal broker execution; no production or general hostile-workload security certification is claimed. See [the acceptance record](docs/AF007_VERIFICATION.md).
 
@@ -10,7 +10,7 @@ The first prioritized external control channel is **Telegram**, after the persis
 
 ## Start here
 
-Read [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the local bootstrap commands and [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) for the longer-term plan. The accepted baseline includes **AF-001 through AF-007**, with AF-007 limited to its reviewed Linux AMD64 synthetic scope. **AF-023 local intake is accepted and merged in `ce55b8d`**, with both required [main CI jobs](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39737704211) passing. No next implementation increment has been initiated. Keep implementation separate from any existing MOLVEX or ADDIV repository.
+Read [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) for the local bootstrap commands and [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) for the longer-term plan. The accepted baseline includes **AF-001 through AF-007**, with AF-007 limited to its reviewed Linux AMD64 synthetic scope. **AF-023 local intake is accepted and merged in `ce55b8d`**, with both required [main CI jobs](https://github.com/crisdanrodriguez/agentic-factory/actions/runs/39737704211) passing. AF-029 is the active approved increment, with local fake/PostgreSQL verification and human review tracked in [`docs/AF029_VERIFICATION.md`](docs/AF029_VERIFICATION.md). Keep implementation separate from any existing MOLVEX or ADDIV repository.
 
 Use the tested Node.js 24 LTS version `24.22.0` and npm `11.9.0`, then run:
 
@@ -54,3 +54,7 @@ The current repository license is [MIT](LICENSE). The existing license is preser
 ### Local WorkItem intake (AF-023, accepted and merged)
 
 Use `work-item create`, `work-item revise`, and `work-item show` with an operator-configured project and authenticated PostgreSQL role. Intake requires no ticket service, AI provider, or running sandbox and grants no execution rights. See [setup and usage](docs/LOCAL_INTAKE.md) and [verification](docs/AF023_VERIFICATION.md).
+
+### Optional Telegram control (AF-029, awaiting review)
+
+See [`docs/TELEGRAM.md`](docs/TELEGRAM.md) for separate bot/admin identities, local confirmation of pairing, strict intake commands, durable receipts/outbox, recovery, and conservative limits. Local intake remains independent. No execution or approval capabilities are introduced. Hosted and separately authorized live development-bot verification remain outstanding.

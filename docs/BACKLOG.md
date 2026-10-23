@@ -1,9 +1,9 @@
 # Agentic Factory — Backlog, Revision 2.1 (Telegram Priority Amendment)
 
-**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`, with a successful main-branch GitHub Actions run confirmed by the owner. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. AF-007 is accepted and merged for its reviewed Linux AMD64 synthetic scope. AF-023 is accepted and merged in `ce55b8d`; both main CI jobs passed in run `39737704211` (see `AF023_VERIFICATION.md`). Other later tickets remain unimplemented.
+**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`, with a successful main-branch GitHub Actions run confirmed by the owner. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. AF-007 is accepted and merged for its reviewed Linux AMD64 synthetic scope. AF-023 is accepted and merged in `ce55b8d`; both main CI jobs passed in run `39737704211` (see `AF023_VERIFICATION.md`). AF-029 is the active approved increment; other later tickets remain unimplemented.
 AF-001 through AF-028 remain from revision 2. AF-029 and AF-030 are new Telegram tickets; all previous acceptance criteria are preserved. Numbering alone does not define execution order. See the stage table in the master plan.
 
-**Accepted first increment:** AF-001, AF-002, and AF-003. **Latest accepted increment:** AF-023 local intake, merged and main-verified. No next implementation increment has been initiated. AF-007: Linux AMD64 implementation and verification completed, accepted and squash-merged in `df1f4f5`; main CI passed. macOS ARM64 validation remains outstanding. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
+**Accepted first increment:** AF-001, AF-002, and AF-003. **Latest accepted increment:** AF-023 local intake, merged and main-verified. AF-029 is active: optional Telegram pairing, local intake, and metadata-only status. Hosted and separately authorized live verification are pending. AF-007: Linux AMD64 implementation and verification completed, accepted and squash-merged in `df1f4f5`; main CI passed. macOS ARM64 validation remains outstanding. Telegram is the higher-priority **current integration**, not part of the first code scaffold. Do not execute this entire document at once.
 
 Web extensions and the nontechnical experience are separate roadmap branches. Telegram is an early optional input/control channel and does not block the first useful software and research workflows without messaging. AF-029 follows AF-023 and precedes GitHub/Codex adapter development; AF-030 follows the versioned approval engine in AF-012. If earlier implementations already exist, review their evidence before accepting or reopening a ticket.
 
@@ -405,7 +405,7 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Stage:** 2A — Early Telegram control (after the local WorkItem path; before the GitHub/Codex provider integrations)  
 **Dependencies:** AF-005, AF-023  
-**Status:** Pending implementation/verification
+**Status:** Active, awaiting human review; local implementation and fake/PostgreSQL verification complete, hosted verification and separately authorized live development-bot acceptance pending. See `TELEGRAM.md` and `AF029_VERIFICATION.md`. `/cancel` remains unavailable because intake authorizes no execution.
 
 **Acceptance Criteria**
 

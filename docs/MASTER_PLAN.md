@@ -1,7 +1,7 @@
 # Agentic Factory — Master Plan, Revision 2.1 (Telegram Priority Amendment)
 
 **Status:** revision 2.1 specification; AF-001–003 accepted and merged in `4a0ce53`. Milestone 2 (AF-004–006) is accepted and merged in `2705aac`, with the successful main-branch GitHub Actions run confirmed by the owner; see `MILESTONE_2_VERIFICATION.md`. The accepted baseline provides configuration validation and persistent synthetic workflows, not a complete executing Factory. Revision 2 remains the product baseline; 2.1 changes Telegram implementation priority only.
-**Latest accepted increment:** AF-023 local WorkItem intake is merged in `ce55b8d`; both required main CI jobs passed in run `39737704211`. No next implementation increment has been initiated. AF-007 is accepted for the reviewed Linux AMD64 synthetic scope only; macOS ARM64 sandbox validation remains outstanding. See `LOCAL_INTAKE.md` and `AF023_VERIFICATION.md`.
+**Latest accepted increment:** AF-023 local WorkItem intake is merged in `ce55b8d`; both required main CI jobs passed in run `39737704211`. AF-029 is the active approved increment: optional Telegram pairing, intake, and status; local implementation and fake/PostgreSQL verification are complete; human review is pending. Hosted and separately authorized live verification remain pending. See `TELEGRAM.md` and `AF029_VERIFICATION.md`. AF-007 is accepted for the reviewed Linux AMD64 synthetic scope only; macOS ARM64 sandbox validation remains outstanding. See `LOCAL_INTAKE.md` and `AF023_VERIFICATION.md`.
 
 **Guiding change:** develop projects and experiments with verifiable deliverables, rather than exclusively developing web applications or processing tickets that must end in a pull request or deployment.  
 **Document scope:** supersedes the previous revision for work not yet implemented. It does not establish that repositories, accounts, or infrastructure have been changed.  
@@ -253,7 +253,7 @@ Telegram is prioritized before the GitHub/Codex adapters but **not** before the 
 3. Add two configuration fixtures: general software and ML research. They must validate without mandatory hosting, pull requests, or URLs.
 4. Review the first diff and tests. Then implement the simulated engine for both profiles.
 5. After AF-004–006, implement AF-007 and AF-023. Next implement AF-029 (Telegram intake/status) against those real services. Continue with AF-024–025 and the GitHub/Codex integrations; implement AF-030 approvals only after AF-012.
-6. **Do not create a real Telegram bot token during the documentation/scaffold stage.** When AF-029 begins, use BotFather for a development-only bot and keep its token outside version control.
+6. **Do not create a real Telegram bot token during the documentation/scaffold stage.** During AF-029, complete deterministic fake/API and database verification first. Create/use a development-only bot only after separate owner authorization; keep its token outside version control.
 
 If development already started under the earlier plan, first audit web-specific assumptions: mandatory `pr_url` or `deployment_url` fields, universal merge stages, global `npm` commands, and statuses that conflate execution with outcome. Correct these with small changes rather than restarting the entire project.
 

@@ -38,7 +38,7 @@ test('review regression: CI provisions PostgreSQL and runs every mandatory check
   assert.match(workflow, /--health-cmd/);
   assertMandatoryWorkflow(workflow);
   const commands = [...workflow.matchAll(/^\s+- run: (.+)$/gm)].map((match) => match[1]);
-  const required = ['npm ci --ignore-scripts --no-audit --no-fund', 'npm run deps:patch', 'npm run deps:check', 'npm run test:deps', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run db:migrate', 'npm run db:setup-local', 'npm run db:setup-queue', 'npm run test:compatibility', 'npm run test:state', 'npm run test:queue', 'npm run test:intake', 'npm run test:simulations'];
+  const required = ['npm ci --ignore-scripts --no-audit --no-fund', 'npm run deps:patch', 'npm run deps:check', 'npm run test:deps', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run db:migrate', 'npm run db:setup-local', 'npm run db:setup-telegram', 'npm run db:setup-queue', 'npm run test:compatibility', 'npm run test:state', 'npm run test:queue', 'npm run test:intake', 'npm run test:telegram', 'npm run test:simulations'];
   let previous = -1;
   for (const command of required) { const index = commands.indexOf(command); assert.ok(index > previous, `Missing or out-of-order mandatory CI command: ${command}`); previous = index; }
 });

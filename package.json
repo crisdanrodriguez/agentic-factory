@@ -29,7 +29,10 @@
     "test:sandbox": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/sandbox/*.test.js && python3 tests/sandbox/feasibility.py",
     "sandbox:broker": "node dist/runtime/sandbox-broker.js",
     "sandbox:image": "node scripts/prepare-sandbox-image.mjs",
-    "test:intake": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/intake.test.js"
+    "test:intake": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/intake.test.js",
+    "db:setup-telegram": "node scripts/setup-local-telegram.mjs",
+    "telegram": "node dist/cli/telegram.js",
+    "test:telegram": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/telegram.test.js"
   },
   "dependencies": {
     "node-pg-migrate": "9.0.0",

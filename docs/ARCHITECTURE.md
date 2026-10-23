@@ -42,7 +42,7 @@ PostgreSQL is the authoritative workflow store in AF-004. AF-005 implements the 
 
 AgentRuntime will perform reasoning/code changes. JobExecutor will run noninteractive computation without holding a model session open. ArtifactStore will keep project-scoped, versioned private outputs outside the coordinator database and public source repository. Optional external references never become mandatory domain identity.
 
-Telegram is the first planned external control channel after AF-007/AF-023 and the persistent engine. AF-029 adds optional long polling over the same WorkItem services as local input; AF-030 adds revision-bound approvals after AF-012. PostgreSQL, not Telegram, remains authoritative. No token, bot, polling, pairing, or channel implementation exists here. An offline host cannot process requests. Future pairing uses numeric private-chat/user IDs, permissions, expiry, replay protection, deduplication, audit events, and minimal notifications.
+Telegram is the first planned external control channel after AF-007/AF-023 and the persistent engine. AF-029 adds optional long polling over the same WorkItem services as local input; AF-030 adds revision-bound approvals after AF-012. PostgreSQL, not Telegram, remains authoritative. AF-029 now implements the optional channel adapter locally; no live bot/token has been configured or tested. An offline host cannot process requests. Pairing uses fixed numeric private-chat/user IDs, dedicated authenticated PostgreSQL bot/admin principals, five-minute challenges, pending claims and local confirmation, generation fencing, durable update receipts and minimal replies. Hosted and live acceptance remain pending. See `TELEGRAM.md` and `AF029_VERIFICATION.md`.
 
 ## Pending decisions
 
@@ -61,3 +61,7 @@ New completion commands require artifact references in `kind:identifier` form, w
 ## AF-023 local intake (accepted and merged)
 
 AF-023 is merged in `ce55b8d` with both required main CI jobs passing. The local CLI adapter resolves trusted installation scope and records the existing WorkItem contract through `WorkItemStore` and a separate PostgreSQL intake adapter. New intake tables use forced RLS, authenticated role memberships, SQL owner/actor checks, immutable originals and actor-scoped receipts. No profile, plan, Run, queue operation, provider, or sandbox is created. Intake is not execution authorization. See `LOCAL_INTAKE.md` for the exact boundary and `AF023_VERIFICATION.md` for evidence.
+
+## AF-029 transaction composition
+
+`TelegramRunner` composes the optional `TelegramApi` HTTPS adapter and PostgreSQL `TelegramStore`. The channel journal is transport state, not a ticket database. Canonical requests remain in `WorkItemStore`; its PostgreSQL implementation can join a caller-owned transaction on the same authenticated connection. A pairing row lock orders local revocation against intake and outbox insertion. A dedicated session advisory lock permits one poller without holding transactions across network calls. No agent, queue, execution, approval, or publication port is reachable from this adapter. Configuration and secret environment variables are separate from the local intake CLI.

@@ -30,7 +30,7 @@ The sections below describe the accepted Milestone 2 simulation baseline, separa
 | Local configuration files | Sensitive input in diagnostics, excessive input | Read only the explicitly requested configuration; bound file size and emit safe structural errors without echoing values or file contents. This CLI is not a filesystem sandbox. |
 | Future agents and project processes | Secret theft or host access | Keep master keys, coordinator credentials, production secrets, unrestricted mounts, and Docker sockets outside project sandboxes. A worktree is not isolation. |
 | Future artifacts | Cross-project access or accidental publication | Private project-scoped storage, immutable identity, quotas, retention, and authorized export belong to later tickets. A digest proves integrity, not scientific truth. |
-| Future Telegram messages | Spoofing, replay, duplicate delivery, data disclosure | Pair numeric user/private-chat IDs locally; authorize every action; bind approvals to revision and expiry. No groups, arbitrary shell commands, or private artifact transfer. |
+| Optional AF-029 Telegram messages | Spoofing, replay, duplicate delivery, data disclosure | Confirm numeric user/private-chat IDs locally; authorize every action through the dedicated principal and pairing generation. No groups, arbitrary shell commands, or private artifact transfer. Approval integration remains future AF-030 scope. |
 
 ## Current simulation boundary
 
@@ -59,3 +59,9 @@ Synthetic journal access now resolves organization/project authority against Pos
 ## AF-023 intake boundary
 
 Local request files are untrusted data, never authorization. Trusted private installation configuration selects an inbox and project scope; authenticated PostgreSQL memberships establish owner identity and permissions. Forced RLS and SQL checks protect intake ownership and actor identity even for direct runtime SQL. Original requests remain sensitive private database records. Ordinary errors and create/revise receipts omit content and private paths; explicit `show` output is sensitive. See `LOCAL_INTAKE.md` for file protections, host-user trust, retention, and recovery limits. Intake does not authorize or schedule execution.
+
+## AF-029 channel boundary
+
+The first installation binds one human and one project to one dedicated non-privileged bot `session_user`; separate local administration issues and confirms pairings. No shared-actor multi-user impersonation is implemented. Forced RLS isolates channel rows by configured authenticated principal; canonical intake RLS retains membership, owner, and actor enforcement. Every channel intake/status/list operation and each reply attempt also revalidates pairing generation and database membership. The bot is trusted authorization code, not an untrusted project process. Direct possession of its database credential permits scoped intake writes and channel access; PostgreSQL does not authenticate Telegram messages itself.
+
+The pairing row lock serializes revocation with intake commits. Poller session loss aborts transport and processing; outbox delivery remains non-atomic and may duplicate a minimal reply. Revocation cannot retract an in-flight network request or a committed WorkItem. Private configuration, token redaction, a fixed TLS endpoint, input/rate/storage/retry bounds, and explicit live-test authorization are documented in `TELEGRAM.md`. Original accepted request text is retained in private immutable intake history. No Telegram token or live API call was used in local fake/database verification. AF-030 approvals and execution remain absent.

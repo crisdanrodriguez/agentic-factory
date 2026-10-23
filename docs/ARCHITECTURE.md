@@ -65,3 +65,8 @@ AF-023 is merged in `ce55b8d` with both required main CI jobs passing. The local
 ## AF-029 transaction composition
 
 `TelegramRunner` composes the optional `TelegramApi` HTTPS adapter and PostgreSQL `TelegramStore`. The channel journal is transport state, not a ticket database. Canonical requests remain in `WorkItemStore`; its PostgreSQL implementation can join a caller-owned transaction on the same authenticated connection. A pairing row lock orders local revocation against intake and outbox insertion. A dedicated session advisory lock permits one poller without holding transactions across network calls. No agent, queue, execution, approval, or publication port is reachable from this adapter. Configuration and secret environment variables are separate from the local intake CLI.
+
+
+## AF-031 optional Slack adapter
+
+The separately started Slack Socket Mode adapter reuses canonical WorkItem intake and existing SQL membership/owner authorization. Four additive channel tables hold trusted installation mappings, locally confirmed pairing, durable event receipts, and the reply outbox. Capturing an envelope and processing its WorkItem are separate bounded transactions; acknowledgment follows capture commit. A dedicated single-instance session lock and generation checks fence restart/revocation. No agent, execution, queue, sandbox, or approval capability is exposed. See `SLACK.md` for trust boundaries and `AF031_VERIFICATION.md` for synthetic evidence. AF-029 status and runtime restrictions are unchanged.

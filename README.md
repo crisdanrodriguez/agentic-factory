@@ -58,3 +58,9 @@ Use `work-item create`, `work-item revise`, and `work-item show` with an operato
 ### Optional Telegram control (AF-029, awaiting review)
 
 See [`docs/TELEGRAM.md`](docs/TELEGRAM.md) for separate bot/admin identities, local confirmation of pairing, strict intake commands, durable receipts/outbox, recovery, and conservative limits. Local intake remains independent. No execution or approval capabilities are introduced. Hosted and separately authorized live development-bot verification remain outstanding.
+
+AF-031's optional Slack DM intake adapter is a stacked local increment; see
+[Slack setup and security boundaries](docs/SLACK.md) and
+[AF-031 verification](docs/AF031_VERIFICATION.md). It does not authorize execution
+or change AF-029 acceptance status. Live Slack installation/testing requires
+separate owner authorization.

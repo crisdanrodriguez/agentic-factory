@@ -5,11 +5,11 @@ export const MAX_REQUEST_BYTES = 65536;
 export class IntakeError extends Error {}
 export function fail(message: string): never { throw new IntakeError(message); }
 const requestSchema = z.strictObject({ objective: workItemSchema.shape.objective, context: workItemSchema.shape.context });
-export type IntakeSource = { kind: 'file' | 'cli' | 'telegram'; bytes: Buffer };
-export type IntakeRecord = { workItem: WorkItem; version: number; actor: string; sourceKind: 'file' | 'cli' | 'telegram'; digest: string };
+export type IntakeSource = { kind: 'file' | 'cli' | 'telegram' | 'slack'; bytes: Buffer };
+export type IntakeRecord = { workItem: WorkItem; version: number; actor: string; sourceKind: 'file' | 'cli' | 'telegram' | 'slack'; digest: string };
 export type IntakeOperation = { kind: 'create'; key: string } | { kind: 'revise'; key: string; id: string; expectedRevision: string };
 export function parseRequest(source: IntakeSource): z.infer<typeof requestSchema> {
-  if (!['file', 'cli', 'telegram'].includes(source.kind) || source.bytes.length === 0 || source.bytes.length > MAX_REQUEST_BYTES) fail('Request exceeds the allowed bounds.');
+  if (!['file', 'cli', 'telegram', 'slack'].includes(source.kind) || source.bytes.length === 0 || source.bytes.length > MAX_REQUEST_BYTES) fail('Request exceeds the allowed bounds.');
   try {
     const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(source.bytes);
     return requestSchema.parse(JSON.parse(text) as unknown);

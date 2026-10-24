@@ -17,7 +17,7 @@ try{
   const config=schema.parse(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readPrivateFile(dirname(path),basename(path)))));
   const app=process.env[config.appTokenEnvironment],bot=process.env[config.botTokenEnvironment];if(!app||!bot)throw Error();
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
-  const result=await observeSlack(new HttpsSlackApi(app,bot),connectSlack,config.identity,{windowMs:config.windowSeconds*1000,maxEvents:config.maxEvents},p=>console.log(JSON.stringify(p)),abort.signal);
+  const result=await observeSlack(new HttpsSlackApi(app,bot),connectSlack,config.identity,{windowMs:config.windowSeconds*1000,maxEvents:config.maxEvents},p=>console.log(JSON.stringify(p)),abort.signal,()=>console.log('AF031_OBSERVER_READY'));
   console.log(JSON.stringify({observation:result,intakeAuthorized:false}));if(result!=='compatible')process.exitCode=1;
  }
 }catch{console.error('Observation incomplete. Sensitive details withheld. No intake authorized.');process.exitCode=1;}

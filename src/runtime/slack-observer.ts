@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import { appId, teamId, userId, channelId, slackId, envelopeSchema, parseMessage, MAX_ENVELOPE_BYTES } from '../core/slack.js';
 import type { SlackApi, SlackConnect, SlackSocket } from '../ports/slack-api.js';
@@ -28,7 +29,7 @@ export type Projection = ReturnType<typeof projectEvent>;
 export class ObservationError extends Error { constructor(){super('Observation stopped without a confirmed result. Sensitive details withheld.');} }
 // Deliberate diagnostic consumption only: no persistence, replies, pairing or business operations.
 export async function observeSlack(api:Pick<SlackApi,'identity'|'open'>,connect:SlackConnect,trusted:ObserverIdentity,
- options:{windowMs:number;maxEvents:number},emit:(projection:Projection)=>void,signal?:AbortSignal):Promise<'compatible'|'incompatible'> {
+ options:{windowMs:number;maxEvents:number},emit:(projection:Projection)=>void,signal?:AbortSignal,onReady:()=>void=()=>{}):Promise<'compatible'|'incompatible'> {
  let socket:SlackSocket|undefined;const abort=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
  const stop=()=>abort.abort();signal?.addEventListener('abort',stop,{once:true});
  try{
@@ -36,18 +37,24 @@ export async function observeSlack(api:Pick<SlackApi,'identity'|'open'>,connect:
   if(!Number.isInteger(options.windowMs)||options.windowMs<1||options.windowMs>60000||!Number.isInteger(options.maxEvents)||options.maxEvents<1||options.maxEvents>3)throw new ObservationError();
   if(signal?.aborted)throw new ObservationError();
   const interrupted=new Promise<never>((_,reject)=>{abort.signal.addEventListener('abort',()=>reject(new ObservationError()),{once:true});timer=setTimeout(stop,options.windowMs);});
+  const deadline=performance.now()+options.windowMs;
+  const active=()=>{if(abort.signal.aborted||performance.now()>=deadline)throw new ObservationError();};
   const work=async()=>{
    const identity=await api.identity(abort.signal);
-   if(abort.signal.aborted)throw new ObservationError();
+   active();
    if(identity.teamId!==trusted.teamId||identity.botId!==trusted.botId||identity.userId!==trusted.botUserId)throw new ObservationError();
    const url=await api.open(abort.signal);
-   if(abort.signal.aborted)throw new ObservationError();
+   active();
    socket=await connect(url,abort.signal);
    if(abort.signal.aborted){socket.close();throw new ObservationError();}
    const hello=object(await socket.next(abort.signal));
    if(hello.type!=='hello'||object(hello.connection_info).app_id!==trusted.appId)throw new ObservationError();
+   active();
+   // Leave a minimum manual-send budget without extending the original deadline.
+   if(deadline-performance.now()<10000)throw new ObservationError();
+   onReady();
    for(let n=0;n<options.maxEvents;n++){
-    if(abort.signal.aborted)throw new ObservationError();
+    active();
     const value:unknown=await socket.next(abort.signal);
     if(Buffer.byteLength(JSON.stringify(value)??'')>MAX_ENVELOPE_BYTES)throw new ObservationError();
     const e=object(value),p=object(e.payload),m=object(p.event);
@@ -55,9 +62,9 @@ export async function observeSlack(api:Pick<SlackApi,'identity'|'open'>,connect:
     const id=z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/).parse(e.envelope_id);
     if(e.type!=='events_api'||typeof e.accepts_response_payload!=='boolean'||p.type!=='event_callback'||p.team_id!==trusted.teamId||p.api_app_id!==trusted.appId||m.user!==trusted.humanId||m.channel!==trusted.channelId||!parseMessage(m)||m.text!==SYNTHETIC_OBSERVATION)throw new ObservationError();
     const projection=projectEvent(value,trusted);
-    if(abort.signal.aborted)throw new ObservationError();
+    active();
     await socket.ack(id);
-    if(abort.signal.aborted)throw new ObservationError();
+    active();
     emit(projection); // Acknowledged diagnostic event, never accepted intake.
     if(!projection.schemaCompatible)return 'incompatible' as const;
    }

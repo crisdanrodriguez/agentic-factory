@@ -32,17 +32,23 @@
     "test:intake": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/intake.test.js",
     "db:setup-telegram": "node scripts/setup-local-telegram.mjs",
     "telegram": "node dist/cli/telegram.js",
-    "test:telegram": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/telegram.test.js"
+    "test:telegram": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/telegram.test.js",
+    "db:setup-slack": "node scripts/setup-local-slack.mjs",
+    "slack": "node dist/cli/slack.js",
+    "slack:observe": "node dist/cli/slack-observe.js",
+    "test:slack": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/slack.test.js"
   },
   "dependencies": {
     "node-pg-migrate": "9.0.0",
     "pg": "8.23.1",
     "pg-boss": "12.38.0",
+    "ws": "8.22.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
+    "@types/ws": "8.18.2",
     "eslint": "10.13.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.2"

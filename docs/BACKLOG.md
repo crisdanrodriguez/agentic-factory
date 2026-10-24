@@ -449,3 +449,20 @@ Review and approval:
 Recovery procedure:
 Stopping rule:
 ```
+
+## AF-031 — Slack Control: Local Intake and Status
+
+**Stage:** Optional channel increment, stacked on the reviewed AF-029 branch
+
+**Dependencies:** AF-023, AF-029 implementation through migration 004
+
+**Status:** Proposed backlog entry under owner-authorized local implementation; independent review and separately authorized live acceptance pending. This does not change AF-029 acceptance status. See `SLACK.md` and `AF031_VERIFICATION.md`.
+
+**Acceptance Criteria**
+
+- [ ] Optional Socket Mode adapter, one workspace/app/human/project, minimum connections:write / im:history / chat:write permissions and message.im subscription only.
+- [ ] Local short-lived pairing and explicit confirmation bind trusted Slack IDs to separate bot/admin SQL identities; forced RLS and canonical owner authority remain enforced.
+- [ ] DM help/new/status/list record/query canonical WorkItems with Slack provenance; cancel unavailable; no execution, approval, provider, sandbox or publication effects.
+- [ ] Stable event deduplication, durable capture before acknowledgment, bounded transport buffers/reconnections/retries, atomic intake receipts, restart recovery and revocation.
+- [ ] Deterministic fake API/socket and real synthetic PostgreSQL evidence, privacy/authorization regressions, and all existing mandatory checks preserved.
+- [ ] Independent review followed by a separately authorized development-app test; no implicit app installation, tokens, live calls, push, PR or merge.

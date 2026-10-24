@@ -46,12 +46,14 @@ jobs:
       - run: npm run db:migrate
       - run: npm run db:setup-local
       - run: npm run db:setup-telegram
+      - run: npm run db:setup-slack
       - run: npm run db:setup-queue
       - run: npm run test:compatibility
       - run: npm run test:state
       - run: npm run test:queue
       - run: npm run test:intake
       - run: npm run test:telegram
+      - run: npm run test:slack
       - run: npm run test:simulations
       - run: node dist/cli/index.js --help
       - run: node dist/cli/index.js validate fixtures/software-general.json

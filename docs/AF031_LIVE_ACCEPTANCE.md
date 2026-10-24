@@ -1,0 +1,126 @@
+# AF-031 development-app acceptance checklist
+
+Status: prepared locally for review only. This document authorizes no app installation, credential provisioning, live API call, pairing, publication or merge. Stage A requires separate owner authorization. Stage B requires a recorded Stage A pass and a separate explicit owner authorization; Stage A approval never authorizes intake.
+
+Reviewed implementation: `92abbc46692932fbf68f77a9cacd6ff9f0e4767e`. Both mandatory jobs passed in PR workflow 40033014782 and push workflow 40033009524. Read `SLACK.md`, `AF031_VERIFICATION.md`, and AF-031 in `BACKLOG.md`. Preserve these historical synthetic results separately from live observations.
+
+PR #8 remains Draft and stacked on `feat/af-029-telegram-control` at `9cf24d6da01fd008930614c39911537741ea3077`. Do not modify that branch or its Telegram acceptance environment, credentials, database or volume. No execution, AI provider, queue worker, approval, sandbox, deployment or publication is part of either stage.
+
+## Roles, outcomes and evidence rules
+
+- **Manual:** the owner/operator grants authorization, provisions private resources, verifies trusted identities, sends synthetic DMs, confirms pairing, reviews evidence and performs cleanup.
+- **Automated:** existing adapter assertions or an independently reviewed Stage A observer evaluate explicit conditions. They do not grant authorization or generate an acceptance decision automatically.
+- **Pass:** the specified assertion actually ran and its expected outcome was observed.
+- **Fail:** observed behavior contradicts a required condition. Stop immediately; do not alter controls to obtain a pass.
+- **Not observed:** evidence is absent, ambiguous or the scenario was not exercised. A required not-observed result prevents stage completion. Silence alone is never proof of denial.
+
+Published evidence may contain reviewed commit, tool versions, stage/scenario labels, counts, field names, presence/types, equality-to-trusted-configuration booleans, schema pass/fail and allowlisted failure categories. It must not contain actual workspace/app/bot/human/channel/event IDs, tokens, pairing challenges, WebSocket URLs, database URLs/passwords, private configuration/paths, raw Slack messages, payload fragments or request bodies. Do not publish hashes of sensitive payloads as a substitute for redaction. Private canonical records remain private even when synthetic.
+
+No payload logging, HTTP/WebSocket debug logging, shell tracing, screen recording, packet capture, serialized validation exceptions or full configuration dumps. Compare identifiers in memory or privately; report only match/mismatch. Validation diagnostics must be explicitly allowlisted, not arbitrary error strings or unexpected field names supplied by a sender. If accidental exposure occurs, stop, rotate affected credentials through the operator and preserve only redacted incident evidence.
+
+## Common manual authorization and provisioning gate
+
+- [ ] Owner approves one isolated development workspace, one development Slack App, one consenting human and a bounded test window. No business workspace, Slack Connect, channels, threads or other participants.
+- [ ] Confirm exact reviewed head and successful mandatory CI immediately before testing. A changed executable requires review. Node 24.22.0/npm 11.9.0 are the tested versions; use `npm ci --ignore-scripts --no-audit --no-fund`, `npm run deps:patch`, `npm run deps:check`, and `npm run build` in the reviewed checkout after authorization.
+- [ ] Operator alone installs/configures the approved development app when separately authorized. Limit app token to `connections:write`, bot scopes to `im:history` and `chat:write`, and bot event subscription to `message.im`. No user token, extra scopes, slash commands, public endpoint, webhooks, channel subscriptions or OAuth expansion.
+- [ ] Establish exact workspace/app/bot/bot-user/human identities through owner-controlled first-party records. Names, message text and display labels are not authority. Keep the mapping private. Require the same single workspace/app/human for both stages; a changed identity requires a new Stage A.
+- [ ] Store secrets outside Git, CI and project workspaces using an owner-controlled secret manager. Private operator-owned directories must be mode 0700; regular configuration files mode 0600, with no links. Inject credentials privately without command arguments, history or echo. Do not request values in chat.
+- [ ] Approve retention and cleanup responsibilities before starting. Neither this checklist nor its preparation accesses credentials or creates resources.
+
+## Stage A — Protocol compatibility preflight
+
+### A0. Observation mechanism is a blocking prerequisite
+
+A separate local diagnostic now exists as `npm run slack:observe -- --synthetic-only`. It remains subject to independent review and separate live authorization; its existence does not grant either. Normal `npm run slack -- start` still initializes durable intake and must not be substituted for this diagnostic.
+
+The observer has no database connection or pairing/intake worker. It reads a separate private `FACTORY_SLACK_OBSERVER_CONFIG` file using the reviewed private-file reader. The strict JSON configuration contains `identity` with `teamId`, `appId`, `botId`, `botUserId`, `humanId`, and `channelId`, plus `appTokenEnvironment`, `botTokenEnvironment`, `windowSeconds` (1–60), and `maxEvents` (1–3). No database URL/configuration is accepted. Establish the DM channel identity privately through the owner-controlled Slack interface before observation; if this cannot be done safely, stop rather than discovering authority from untrusted message text. Use environment-variable names in the file, with token values injected privately. Use a clean process environment containing no database, migration, administrator or provider credentials.
+
+The diagnostic and its fake tests must pass independent review before live use. After verified auth.test identity and Socket Mode hello, its private Terminal prints exactly `AF031_OBSERVER_READY` once, followed later by metadata-only JSON and a fixed compatibility result. At least 10 seconds must remain in the original observation window; otherwise it stops without READY. READY is not event observation, compatibility success or Stage A acceptance. Exit 0 means the configured number of deliberately observed events were acknowledged and compatible; exit 1 means incompatible or incomplete, never permission to continue to intake. An incompatible event can be acknowledged as diagnostic consumption, without being accepted as work.
+
+The reviewed observation procedure must:
+
+- Have no database credential, database connection, WorkItemStore, processing worker, outbox, reply sender or execution capability. No pairing issue/confirm operation is allowed.
+- Use bot/app credentials only for the approved `auth.test`, `apps.connections.open` and Socket Mode connection. Do not call additional identity/conversation APIs or request extra scopes to compensate for missing evidence.
+- Reuse the reviewed TLS URL allowlist, certificate verification and transport bounds; never print the returned URL. Keep response/envelope data in memory only and disable crash/core dumps and raw error output for this process.
+- Limit the observation to one connection, a configured maximum of one to three deliberately sent synthetic DMs and a maximum 60-second total window, including identity lookup and connection. The transport retains its 20-frame buffering bound. Close on the first identity/schema failure or when the bounded observation completes. No automatic reconnect or replay loop.
+- Emit only the allowlisted summary below. Unknown fields and validation errors must not cause payload values to appear in diagnostics.
+- Acknowledge only an exact `AF031 synthetic protocol observation` message from the configured human/channel after safe metadata projection completes. This consumes the Slack event for diagnostics without creating a WorkItem or durable intake receipt. Emit the projection only after acknowledgment completes locally. On failed/uncertain acknowledgment, stop without claiming observation success; remote delivery may still have occurred. No retry or fallback is attempted. Never send `new` or `pair` during Stage A.
+
+### A1–A5. Manual actions and automated assertions
+
+| Step | Manual operator action | Required automated assertion / safe evidence |
+| --- | --- | --- |
+| A1 Bot identity | Privately supply approved bot identity and bot token to the reviewed observer. | `auth.test` succeeds through verified TLS; returned team, bot and bot-user identifiers exactly match the trusted mapping. Record three booleans, not identifiers. |
+| A2 Socket identity | Supply approved app token; permit one connections.open call and socket connection. | Returned URL passes unchanged socketUrl validation; first hello app ID exactly matches trusted app. Record URL-policy pass and app-match boolean only, never URL/query/hostname from the actual response. |
+| A3 DM observation | Prepare the app DM and marker without sending. Launch `npm run slack:observe -- --synthetic-only` with windowSeconds=60 and maxEvents=1. Wait for the exact standalone `AF031_OBSERVER_READY` line; only then send `AF031 synthetic protocol observation`, without files, edits or threads. | Observe the actual bounded envelope in memory. Report field presence/types and current-schema outcome only. No replies, pairing activation or WorkItems. |
+| A4 Authorization evidence | Review the sanitized result, without copying the payload. | Exact workspace/app, one authorization, matching team/bot-user, `is_bot=true`, `is_enterprise_install=false`, and explicit `is_ext_shared_channel=false`. Compare sender privately to expected human. Check original `message`, `channel_type=im`, D-prefixed channel and all current unsupported-field exclusions. |
+| A5 Close and decide | Close observer, remove its secret environment, record outcome; do not start the adapter. | Socket/process closed; no database/intake component was available. Required A1–A4 assertions all pass or Stage A is incomplete/failed. Owner reviews before authorizing Stage B. |
+
+Allowlisted observation fields: envelope `type`, `envelope_id` presence/type, `accepts_response_payload` presence/type; payload `type`, `team_id`, `api_app_id`, `event_id`, `event_time`, `is_ext_shared_channel`; authorization count and `team_id`, `user_id`, `is_bot`, `is_enterprise_install`; inner `type`, `channel_type`, `channel`, `user`, `text`, `ts`; and the combined supported-message predicate from `parseMessage` (never unsupported field names supplied by the sender). For identifiers/text, emit only presence/type and applicable private comparison/bound checks. For security predicates, report only the fixed boolean/invalid values and match booleans emitted by the projector, never the original payload. Use stable categories such as `missing-sharing-evidence`, `installation-authorization-mismatch`, `unsupported-message`, `identity-mismatch`, `transport-policy-failure` or `observation-timeout`.
+
+**Stop conditions:** unexpected TLS URL, identity mismatch, missing/malformed/ambiguous authorization, `is_bot=false`, missing/null/true sharing metadata, unsupported message shape, unsafe diagnostic output, timeout or any required assertion failure. A generic documented example is not evidence that these requirements can be removed. Record, for example, `payload.is_ext_shared_channel: absent; current schema: fail; category: missing-sharing-evidence` without payload content. Request independent review of the compatibility gap; do not broaden scopes, add fallback identities, accept missing evidence, retry indefinitely or progress to Stage B.
+
+Stage A establishes only the observed installation's protocol compatibility with the current schema. It does not demonstrate durable intake, RLS, revocation, recovery or real-world security certification. If the same predicates fail later in Stage B, stop even if Stage A previously passed.
+
+## Stage B — Controlled intake acceptance
+
+### B0. Separate authorization and isolated persistence
+
+- [ ] Record Stage A pass and separate owner approval for intake, the synthetic project, database, bounded scenario count and cleanup window. No automatic transition from A to B.
+- [ ] Provision a separate synthetic-only development PostgreSQL database and independent storage/loopback endpoint. Do not reuse automated fixture credentials or run fixture reset/setup scripts against live acceptance data. Do not reuse or inspect AF-029's database.
+- [ ] In a separate migration process, apply unchanged migrations 001–005 and verify a no-op rerun. Keep migration credentials out of bot/admin processes.
+- [ ] Provision one synthetic organization/project/owner and distinct non-privileged bot/admin database identities, with the precise grants in `SLACK.md`: no superuser, BYPASSRLS, role inheritance/memberships, creation, Run, queue or approval privileges. Verify all four Slack tables have enabled and forced RLS. Verify session_user mappings and the single project membership with can_write=true/can_approve=false. The bot cannot activate pairing or edit installation/membership rows.
+- [ ] The privileged operator inserts only the approved installation mapping and initial revoked pairing row. Create separate private bot/admin configuration files using the existing schema. Admin receives no Slack token; bot receives no admin/migration/provider credential or Docker socket.
+- [ ] Arrange authorized metadata-only observer access for counts and grant inspection. Do not broaden bot/admin privileges for evidence collection. Query explicit count/state columns, never SELECT *, original content, pending payloads or password catalogs. Any new observer provisioning must be reviewed before use.
+- [ ] Record baseline project-scoped WorkItem/head/revision/intake-receipt counts, transport/outbox state counts, and Run/queue/approval counts. No execution worker, agent or sandbox is started. Evidence of absent external calls combines process configuration/code boundaries with observed database counts, not counts alone.
+
+The operator substitutes trusted values privately in the existing commands documented in `SLACK.md`. Do not paste real identifiers or command output into reports. Pace requests below ten per minute and the burst of three; respect byte, response, retry and 1,000-event storage limits. Agree a bounded observation deadline before each scenario. Silence or timeout is not an automatic pass.
+
+| Scenario | Manual action | Existing automated behavior and operator acceptance assertion |
+| --- | --- | --- |
+| B1 Startup/unpaired | Start the adapter with bot-only configuration; send `help` before enrollment. | Identity, hello, session ownership and membership checks pass. No reply/work; observer verifies a bounded rejected-count change and unchanged canonical counts. Silence without capture evidence is not observed. |
+| B2 Issue/claim | Admin runs `pair issue PROJECT USER` privately; human sends the displayed `pair` challenge only to the development app's DM. | Random five-minute challenge is hashed; claim becomes pending only. Keep challenge out of recordings and reports. |
+| B3 Pending denial | While pending, send one synthetic `new` request; inspect pairing privately using `pair show`. | No WorkItem or ordinary reply; binding remains pending, never automatically active. Record state/outcome only. |
+| B4 Confirm | Operator privately verifies exact expected user, DM channel and generation and runs `pair confirm USER CHANNEL GENERATION` before expiry. | Exact pending binding becomes active. Mismatch/expiry fails; never edit rows to bypass confirmation. |
+| B5 Help | Send `help`. | Fixed commands and intake-only limitations; no credentials or private content. |
+| B6 New | Send one strict JSON `new` request with an explicitly synthetic objective/context and no embedded identifiers/privileges. | Exactly one additional canonical WorkItem, revision and intake receipt, plus corresponding durable event receipt. Slack provenance and expected authenticated actor checked privately. No Run/queue/approval increase or provider/sandbox activity. |
+| B7 Status/list | Use returned ID privately with `status ID`; send `list`. | Metadata only; recorded, execution not authorized; list at most ten project-scoped IDs/revisions. No objective/context echoed. Unknown ID is generic unavailable. Do not create excess requests merely to fill pagination. |
+| B8 Cancel | Send `cancel`. | Explicitly unavailable; no mutation of execution state. |
+| B9 Restart | Gracefully stop, confirm exit, restart with retained database and same mapping; do not resend `new`. | Lock reacquired and identity/hello reverified. Canonical counts unchanged; pending durable receipts/outbox recover. Duplicate replies may occur after uncertain delivery, never duplicate WorkItems for one event. |
+| B10 Durable recovery/dedup | If genuine delayed processing or redelivery occurs, observe metadata and restart without modifying state. | Same stable event identity has one canonical effect; retries honor persisted eligibility. If no redelivery/durable pending event occurs, mark this not observed live and cite deterministic tests separately. |
+| B11 Revocation | Admin runs `pair revoke`; then human sends synthetic `new` and `status` in the same DM. | Old generation cannot create/read work or authorize a new reply attempt. Confirm rejected activity and stable canonical counts; in-flight replies cannot be recalled. |
+
+A manually resent identical message receives a new Slack event identity and is not a deduplication test. Do not forge envelopes, force acknowledgment failures, inject crashes, alter timestamps, delete receipts, replay bodies or tamper with locks in the live installation. Deterministic tests separately establish duplicate/conflicting events, crash-after-commit recovery, retry exhaustion and concurrent revocation. Sending while disconnected is not proof of guaranteed offline delivery: Slack retention/redelivery is finite. Report any optional natural occurrence accurately rather than manufacturing a pass.
+
+Delayed events may be overtaken by independent eligible work. Three failed processing attempts (60/300-second delays) exhaust; three reply attempts can also exhaust. Stop on exhaustion or the 1,000-receipt cap, preserve records and report metadata only. Do not prune or resubmit to conceal a failure.
+
+## Stop, rollback and cleanup for either stage
+
+Unexpected identity, schema failure, sensitive output/reply, premature pairing, unauthorized work/read, duplicate canonical effect, changed privileges, execution side effect or unaccounted state change requires immediate stop. Close the observer/adapter and stop sending messages. Preserve sanitized categories/counts, not raw evidence. Any repeat after a fault requires review and renewed approval for the affected procedure.
+
+- [ ] Operator confirms observer and adapter processes/socket connections have exited. If Stage B ran, revoke pairing and verify revoked state; if the database is unavailable, stop processes and revoke Slack tokens first, then complete database revocation before any restart.
+- [ ] Through owner-controlled Slack app administration, revoke both development bot and app-level credentials; disable the development Socket Mode/event configuration as approved. Do not restart with replacements. Record only operator-confirmed revocation, not screenshots or secret values. Do not make extra live calls just to prove cleanup without authorization.
+- [ ] Privileged operator disables dedicated development database logins and terminates only their remaining sessions. Retain canonical synthetic WorkItems, immutable revisions, receipts, provenance and relevant state under private access controls. Do not roll back migrations, cascade-drop roles or erase evidence.
+- [ ] Remove only test-owned temporary private configuration and secret entries after review/retention needs are met; clear injected process environments. Do not remove unrelated resources or AF-029 data. Deleting a file does not guarantee secure erasure or remove Slack's retained data.
+- [ ] Record incomplete cleanup and token-revocation uncertainty explicitly. Cleanup is not passed until both process shutdown and operator-confirmed credential revocation are established. Stage A-only tests also require credential/socket cleanup unless the owner explicitly approves a bounded private handoff to separately authorized Stage B.
+
+## Redacted report and human decision
+
+Use one row per A/B scenario: stage, manual action completed (yes/no), automated assertion executed (yes/no), pass/fail/not-observed, safe failure category, and required follow-up. Include reviewed SHA, environment versions, approval checkpoints, stage completion decisions, canonical/receipt count deltas, denial/revocation results, no-execution evidence and cleanup outcomes. Report identifiers only as equality booleans or non-identifying scenario labels. Do not include raw message content, real IDs, configuration, URLs, tokens, challenges or credentials.
+
+Required Stage A assertions must all pass before B is considered. Missing required Stage B observations leave controlled intake acceptance incomplete; natural duplicate/crash scenarios may be not observed live with separately attributed deterministic evidence, never claimed as live passes. Owner acceptance remains a separate decision from technical results.
+
+Limits remain: trusted host/adapter/database principals, request content transiting Slack, one installation/human/project, conservative schema, finite delivery/retention, uncertain reply duplication and in-flight revocation limits. macOS ARM64 sandbox validation remains outstanding and this procedure invokes no sandbox. Preserve PR #8 as a stacked Draft; do not merge, retarget, deploy or begin another milestone.
+
+## Local observer implementation evidence (not live acceptance)
+
+The observation-only entry point and checklist were initially verified locally based on reviewed head `92abbc46692932fbf68f77a9cacd6ff9f0e4767e`. No live calls were made. The observer exposes only identity/open operations to its runner; it never calls the shared HTTPS adapter's reply method. A transitive source-import regression excludes PostgreSQL, SlackStore, WorkItemStore and execution modules, while fake transport assertions verify zero reply calls. Reusing the private-file reader and core schema does not initialize persistence.
+
+Node 24.22.0/npm 11.9.0 verification: `deps:check`, `lint`, `typecheck`, `build` and `git diff --check` passed. `test:deps` 7/7; final `npm test` 104/104 (12 observer cases); `test:state` 5/5; `test:queue` 8/8; `test:intake` 10/10; `test:telegram` 28/28; `test:slack` 29/29; `test:simulations` 24/24; `test:sandbox-tools` 121/121. Four compatibility checkpoints and both CLI profile validations passed. Migrations reran twice with no pending changes. Database checks used only the separate AF-031 synthetic instance. No failed/skipped/cancelled cases remain. Actual Linux sandbox execution was not rerun locally; existing macOS restrictions apply. No hosted verification or publication is claimed for these changes.
+
+An initial new import-boundary test incorrectly prohibited the reviewed WebSocket acknowledgment's send operation. The assertion was corrected to prohibit reply sends from observer code while retaining the transitive persistence/import prohibition; production transport was not changed. Final tests additionally cover the documented user-authorization variant, sharing-field variants, secret-content projection, identity rejection, deadline/cancellation, event bounds, acknowledgment uncertainty, oversized input and late asynchronous identity completion.
+
+The observer emits fixed incomplete diagnostics for transport/identity errors, not detailed provider exceptions. Operators may assign a safe report category only where supported by the sanitized projection; otherwise record not observed with unknown cause. A local WebSocket send completion is not proof of remote receipt. Timed-out or lost acknowledgments can result in later provider redelivery; the observer never retries. This implementation still needs independent review and separately authorized live Stage A before claiming protocol compatibility.
+
+
+Publication review note: the total network observation timer starts before auth.test and covers connections.open, connection establishment, hello, events and acknowledgments; it does not time the prior bounded private configuration-file read. The diagnostic aborts pending transport operations and closes its socket on exit. Raw objects are not persisted; socket queues are cleared by the reviewed transport and local references become eligible for garbage collection. JavaScript strings, transport buffers and inherited environment values cannot be guaranteed to be securely zeroized. Use a dedicated short-lived process with core dumps/debug recording disabled and operator-managed credential cleanup; process exit is not a cryptographic erasure claim. Final pre-publication results are recorded in AF031_VERIFICATION.md separately from this initial local checkpoint.

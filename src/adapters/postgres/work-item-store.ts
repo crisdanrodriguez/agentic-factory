@@ -6,7 +6,7 @@ import { fail, parseRequest, revisionVersion, validIdentifier, type IntakeOperat
 import type { Scope } from '../../core/workflow.js';
 import type { WorkItemStore } from '../../ports/work-item-store.js';
 
-type Row = { id: string; owner_id: string; project_id: string; version: number; objective: string; context: string; actor: string; source_kind: 'file' | 'cli' | 'telegram'; digest: string };
+type Row = { id: string; owner_id: string; project_id: string; version: number; objective: string; context: string; actor: string; source_kind: 'file' | 'cli' | 'telegram' | 'slack'; digest: string };
 function record(row: Row): IntakeRecord {
   return { workItem: workItemSchema.parse({ id: row.id, ownerId: row.owner_id, projectId: row.project_id, revision: `r${row.version}`, objective: row.objective, context: row.context, origin: { kind: 'local' } }), version: row.version, actor: row.actor, sourceKind: row.source_kind, digest: row.digest };
 }

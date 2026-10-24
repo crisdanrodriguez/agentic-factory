@@ -87,7 +87,10 @@ test('AF-029 pairing requires expected identity, pending claim, local confirmati
   try {
     await f.bot.start(); await assert.rejects(f.admin.issue(user+1,'synthetic-software-project'));
     const code = await f.admin.issue(user,'synthetic-software-project'); assert.match(code,/^[a-f0-9]{64}$/);
-    const issued = await f.admin.inspectPairing(); assert.ok(issued.expires_at!.getTime()-Date.now()<=300000);
+    const issued = await f.admin.inspectPairing();
+    // Expiration is governed by PostgreSQL time, not the host/VM clock offset.
+    const remaining = (await f.db.query<{ remaining: number }>('SELECT extract(epoch FROM ($1::timestamptz-clock_timestamp()))::float AS remaining', [issued.expires_at])).rows[0]!.remaining;
+    assert.ok(remaining > 0 && remaining <= 300);
     assert.ok(!JSON.stringify(issued).includes(code)); assert.deepEqual(Object.keys(issued).sort(),['chat_id','expires_at','generation','state']);
     await assert.rejects(f.admin.confirm(user,user,issued.generation));
     await f.bot.capture([message(1,`/start ${code}`,user+1),message(2,request)]); assert.equal(await f.bot.processOne(),false);

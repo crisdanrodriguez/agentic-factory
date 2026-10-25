@@ -1,7 +1,7 @@
 # Agentic Factory — Master Plan, Revision 2.1 (Telegram Priority Amendment)
 
 **Status:** revision 2.1 specification; AF-001–003 accepted and merged in `4a0ce53`. Milestone 2 (AF-004–006) is accepted and merged in `2705aac`, with the successful main-branch GitHub Actions run confirmed by the owner; see `MILESTONE_2_VERIFICATION.md`. The accepted baseline provides configuration validation and persistent synthetic workflows, not a complete executing Factory. Revision 2 remains the product baseline; 2.1 changes Telegram implementation priority only.
-**Latest accepted increment:** AF-023 local WorkItem intake is merged in `ce55b8d`; both required main CI jobs passed in run `39737704211`. No next implementation increment has been initiated. AF-007 is accepted for the reviewed Linux AMD64 synthetic scope only; macOS ARM64 sandbox validation remains outstanding. See `LOCAL_INTAKE.md` and `AF023_VERIFICATION.md`.
+**Latest accepted increment:** AF-023 local WorkItem intake is merged in `ce55b8d`; both required main CI jobs passed in run `39737704211`. MVP-01 GitHub issue intake and revision-bound plan approval is active in the isolated `feat/mvp-01-github-control` worktree; live App/model credentials and writes remain pending explicit authorization. AF-007 is accepted for the reviewed Linux AMD64 synthetic scope only; macOS ARM64 sandbox validation remains outstanding. See `LOCAL_INTAKE.md` and `AF023_VERIFICATION.md`.
 
 **Guiding change:** develop projects and experiments with verifiable deliverables, rather than exclusively developing web applications or processing tickets that must end in a pull request or deployment.  
 **Document scope:** supersedes the previous revision for work not yet implemented. It does not establish that repositories, accounts, or infrastructure have been changed.  
@@ -51,11 +51,23 @@ Adding `deployment: false` to a pull-request-centered workflow is not sufficient
 
 ## 3A. Early Telegram Control Channel (Revision 2.1)
 
+**Current MVP reprioritization:** the owner has selected GitHub Issues as the
+primary MVP control plane. Telegram and Slack remain optional paused adapters;
+their accepted architecture and historical evidence are preserved, but they do
+not block the GitHub-centered MVP. The current implementation slice is
+documented in `docs/MVP_GITHUB_ROADMAP.md` and is limited to one approved
+installation and repository.
+
 Telegram is now the **first prioritized external control channel**, implemented after the persistent simulated engine and native/local WorkItem entry. It is **not** a replacement for the core or the source of truth. GitHub Issues remains the first repository-integrated issue provider, with Linear later. CLI/local input always remains available; Telegram is opt-in per self-hosted instance.
 
 A user should eventually be able to send a private Telegram message to their own bot to create a WorkItem, check its status, and receive concise updates. Once versioned plan approval exists, authorized users can approve or reject a specific plan revision over Telegram. The same underlying WorkItem and approval APIs must serve CLI, Telegram, and future interfaces. No Telegram-specific fields in the generic project profile or required deliverables.
 
-**Prioritization:** AF-001–003 foundation; AF-004–006 simulated engine; AF-007/AF-023 local execution and intake; **AF-029 Telegram intake and status before GitHub/Codex adapters**; AF-030 Telegram plan approval after AF-012. Research projects still require neither GitHub nor deployment. Telegram does not require early Claude, remote runners, GitHub Actions AI execution, paid GPUs, or hosting a public webhook.
+**Historical 2.1 ordering:** AF-001–003 foundation; AF-004–006 simulated engine;
+AF-007/AF-023 local execution and intake; AF-029 Telegram intake and status;
+AF-030 Telegram plan approval after AF-012. The active GitHub MVP may proceed
+independently while Telegram remains paused. Research projects still require
+neither GitHub nor deployment, and no control channel grants execution or
+publication authority by itself.
 
 For the first Telegram integration use **long polling**, so a Mac or self-hosted machine can connect without opening an inbound HTTP endpoint. Only one active poller should own a bot token; store its update cursor and deduplicate updates. A process that is offline does not answer messages or execute work. Always-on use requires running the Factory on an always-on host; remote execution is a later, separate concern. Webhook support may be added later behind the same channel contract, with an authenticated webhook endpoint.
 

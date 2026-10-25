@@ -5,11 +5,12 @@ export const MAX_REQUEST_BYTES = 65536;
 export class IntakeError extends Error {}
 export function fail(message: string): never { throw new IntakeError(message); }
 const requestSchema = z.strictObject({ objective: workItemSchema.shape.objective, context: workItemSchema.shape.context });
-export type IntakeSource = { kind: 'file' | 'cli'; bytes: Buffer };
-export type IntakeRecord = { workItem: WorkItem; version: number; actor: string; sourceKind: 'file' | 'cli'; digest: string };
+export type IntakeSource = { kind: 'file' | 'cli' | 'github'; bytes: Buffer; origin?: { provider: string; reference: string; updatedAt?: string } };
+export type IntakeRecord = { workItem: WorkItem; version: number; actor: string; sourceKind: 'file' | 'cli' | 'github'; digest: string; originUpdatedAt?: string };
 export type IntakeOperation = { kind: 'create'; key: string } | { kind: 'revise'; key: string; id: string; expectedRevision: string };
 export function parseRequest(source: IntakeSource): z.infer<typeof requestSchema> {
-  if (!['file', 'cli'].includes(source.kind) || source.bytes.length === 0 || source.bytes.length > MAX_REQUEST_BYTES) fail('Request exceeds the allowed bounds.');
+  if (!['file', 'cli', 'github'].includes(source.kind) || source.bytes.length === 0 || source.bytes.length > MAX_REQUEST_BYTES) fail('Request exceeds the allowed bounds.');
+  if (source.kind === 'github' && (!source.origin || source.origin.provider !== 'github' || source.origin.reference.length === 0 || !source.origin.updatedAt || !Number.isFinite(Date.parse(source.origin.updatedAt)))) fail('GitHub intake provenance is required.');
   try {
     const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(source.bytes);
     return requestSchema.parse(JSON.parse(text) as unknown);

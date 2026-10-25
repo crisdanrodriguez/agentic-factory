@@ -1,13 +1,30 @@
 # Agentic Factory — Backlog, Revision 2.1 (Telegram Priority Amendment)
 
-**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`, with a successful main-branch GitHub Actions run confirmed by the owner. See `MILESTONE_2_REVIEW_CORRECTIONS.md` and the historical `MILESTONE_2_VERIFICATION.md`. AF-007 is accepted and merged for its reviewed Linux AMD64 synthetic scope. AF-023 is accepted and merged in `ce55b8d`; both main CI jobs passed in run `39737704211` (see `AF023_VERIFICATION.md`). Other later tickets remain unimplemented.
+**Status:** AF-001–003 accepted and merged in `4a0ce53`; AF-004–006 accepted and merged in `2705aac`; AF-007 is accepted and merged for its reviewed Linux AMD64 synthetic scope; AF-023 is accepted and merged in `ce55b8d`. The GitHub-centered MVP is now the active planning priority. AF-029 Telegram and AF-031 Slack remain optional paused increments; their branches and draft pull requests are preserved and are not part of this MVP implementation. Other later tickets remain unimplemented.
 AF-001 through AF-028 remain from revision 2. AF-029 and AF-030 are new Telegram tickets; all previous acceptance criteria are preserved. Numbering alone does not define execution order. See the stage table in the master plan.
 
-**Accepted first increment:** AF-001, AF-002, and AF-003. **Latest accepted increment:** AF-023 local intake, merged and main-verified. No next implementation increment has been initiated. AF-007: Linux AMD64 implementation and verification completed, accepted and squash-merged in `df1f4f5`; main CI passed. macOS ARM64 validation remains outstanding. Telegram is a higher-priority **next integration**, not part of the first code scaffold. Do not execute this entire document at once.
+**Accepted first increment:** AF-001, AF-002, and AF-003. **Latest accepted increment:** AF-023 local intake, merged and main-verified. The current MVP priority is the GitHub-centered lifecycle documented in `docs/MVP_GITHUB_ROADMAP.md`; AF-029 Telegram and AF-031 Slack are optional paused adapters. AF-007: Linux AMD64 implementation and verification completed, accepted and squash-merged in `df1f4f5`; main CI passed. macOS ARM64 validation remains outstanding. Do not execute this entire document at once.
 
 Web extensions and the nontechnical experience are separate roadmap branches. Telegram is an early optional input/control channel and does not block the first useful software and research workflows without messaging. AF-029 follows AF-023 and precedes GitHub/Codex adapter development; AF-030 follows the versioned approval engine in AF-012. If earlier implementations already exist, review their evidence before accepting or reopening a ticket.
 
 **Language requirement:** all project-authored files, documentation, prompts, code comments, test descriptions, CLI messages, and engineering materials must be in English, as defined in AGENTS.md. The original 28 tickets retain their acceptance criteria; two English-language Telegram tickets are added.
+
+## Current GitHub MVP-01 increment
+
+**Status:** Active in the isolated `feat/mvp-01-github-control` worktree. This
+increment combines the smallest AF-008/009/010/012 slice needed for one
+authorized GitHub Issue to become a canonical WorkItem and receive a
+revision-bound proposed plan and owner approval. The implementation is
+offline-first; live App credentials, GitHub writes, model calls and execution
+remain explicit operator gates. AF-029 and AF-031 remain paused and unchanged.
+
+**Acceptance evidence:** migration 003 is applied and rerun on a dedicated
+synthetic PostgreSQL instance; the deterministic suite covers provenance,
+idempotency, edits, authorization, bounded Codex refinement and comments. A
+real read-only App exchange, installation/repository validation, and discovery
+of issue #1 in `agentic-factory-testbed` passed with no cursor, WorkItem,
+comment, model, or execution side effects. Synchronization, plan refinement,
+owner approval, and all writes remain unvalidated and separately gated.
 
 ## AF-001 — Define the Vision, Scope, and Trust Boundaries
 

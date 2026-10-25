@@ -50,6 +50,15 @@ export class PostgresWorkflowStore implements WorkflowStore {
     if (!result.rows[0]) throw new Error('Run is unavailable in the authorized scope.');
     return result.rows[0].state;
   }
+  async findByOrigin(scope: Scope, provider: string, reference: string): Promise<Run | undefined> {
+    const result = await this.pool.query<{ state: Run }>(`SELECT state FROM factory.runs
+      WHERE organization_id=$1 AND project_id=$2
+        AND state->'config'->'workItem'->'origin'->>'kind'='external-ticket'
+        AND state->'config'->'workItem'->'origin'->>'provider'=$3
+        AND state->'config'->'workItem'->'origin'->>'reference'=$4
+      ORDER BY id DESC LIMIT 1`, [scope.organizationId, scope.projectId, provider, reference]);
+    return result.rows[0]?.state;
+  }
   async getForUpdate(client: PoolClient, scope: Scope, id: string): Promise<Run> {
     await this.authorize(client, scope);
     const result = await client.query<{ state: Run }>('SELECT state FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE', [scope.organizationId, scope.projectId, id]);

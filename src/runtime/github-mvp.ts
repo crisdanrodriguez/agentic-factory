@@ -13,7 +13,7 @@ import { AuthorizedCodexPlanRefiner } from '../adapters/codex/plan-refiner.js';
 const configSchema = z.strictObject({
   databaseUrlEnvironment: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/),
   scope: z.strictObject({ organizationId: z.string().min(1).max(128), projectId: z.string().min(1).max(128) }),
-  trust: z.strictObject({ installationId: z.number().int().positive(), repositoryId: z.number().int().positive(), repositoryFullName: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), ownerId: z.string().min(1).max(128), projectId: z.string().min(1).max(128), authorizedSenderId: z.number().int().positive() }),
+  trust: z.strictObject({ installationId: z.number().int().positive(), repositoryId: z.number().int().positive(), repositoryFullName: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), organizationId: z.string().min(1).max(128), ownerId: z.string().min(1).max(128), projectId: z.string().min(1).max(128), authorizedSenderId: z.number().int().positive() }),
   github: z.strictObject({ appId: z.number().int().positive(), installationId: z.number().int().positive(), repositoryId: z.number().int().positive(), repositoryFullName: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), privateKeyPath: z.string().min(1) }),
   stateDirectory: z.string().min(1),
   codex: z.strictObject({ executable: z.string().min(1), workspace: z.string().min(1), model: z.string().min(1).max(128), timeoutMs: z.number().int().min(1000).max(300000), maxOutputBytes: z.number().int().positive().max(1000000), maxCalls: z.number().int().positive().max(10), authorized: z.boolean(), codexHome: z.string().min(1).optional() }),
@@ -29,7 +29,7 @@ export async function readGitHubMvpConfig(path: string): Promise<GitHubMvpRuntim
 }
 
 export async function createGitHubMvpRuntime(config: GitHubMvpRuntimeConfig) {
-  if (config.scope.projectId !== config.trust.projectId || config.github.repositoryId !== config.trust.repositoryId || config.github.repositoryFullName !== config.trust.repositoryFullName || config.github.installationId !== config.trust.installationId) throw new Error('GitHub MVP installation and trust configuration do not match.');
+  if (config.scope.organizationId !== config.trust.organizationId || config.scope.projectId !== config.trust.projectId || config.github.repositoryId !== config.trust.repositoryId || config.github.repositoryFullName !== config.trust.repositoryFullName || config.github.installationId !== config.trust.installationId) throw new Error('GitHub MVP installation and trust configuration do not match.');
   const databaseUrl = process.env[config.databaseUrlEnvironment]; if (!databaseUrl) throw new Error('GitHub MVP database configuration is unavailable.');
   const key = await privateKey(config.github.privateKeyPath);
   const installation = new GitHubAppInstallation({ ...config.github, privateKeyPem: key }, new (await import('../adapters/github/rest.js')).NodeGitHubHttpsTransport());

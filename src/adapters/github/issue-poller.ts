@@ -29,7 +29,9 @@ export class GitHubIssuePoller implements GitHubIssuePolling {
   async pollOnce(signal: AbortSignal): Promise<PollResult> {
     const events = await this.discover(signal);
     const result = await this.process(events);
-    await this.reader.commitCursor?.();
     return result;
   }
+
+  /** Commit only after the coordinator has durably completed its required checkpoint. */
+  async commitCursor(): Promise<void> { await this.reader.commitCursor?.(); }
 }

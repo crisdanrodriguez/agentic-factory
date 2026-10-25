@@ -21,7 +21,7 @@ import type { GitHubIssuePolling } from '../src/ports/github-api.js';
 import { createRun, transition } from '../src/core/workflow.js';
 
 const issue = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueId: 11, issueNumber: 4, senderId: 13, senderLogin: 'owner', title: 'Add deterministic parser', body: 'Record only.', action: 'opened' as const, updatedAt: '2026-10-24T00:00:00Z' };
-const trust = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', ownerId: 'owner-1', projectId: 'demo', authorizedSenderId: 13 };
+const trust = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', organizationId: 'org-1', ownerId: 'owner-1', projectId: 'demo', authorizedSenderId: 13 };
 const record = (source: IntakeSource): IntakeRecord => ({ workItem: { id: 'w1', ownerId: 'owner-1', projectId: 'demo', revision: 'r1', objective: 'Add deterministic parser', context: 'Record only.', origin: source.kind === 'github' ? { kind: 'external-ticket', provider: 'github', reference: 'owner/demo#4' } : { kind: 'local' } } satisfies WorkItem, version: 1, actor: 'runtime', sourceKind: source.kind, digest: 'd'.repeat(64) });
 
 test('MVP-01 GitHub issue intake binds installation, repository and authorized sender', async () => {
@@ -30,7 +30,7 @@ test('MVP-01 GitHub issue intake binds installation, repository and authorized s
   const result = await new GitHubIssueIntake(store, trust).ingest(issue);
   assert.deepEqual(result.workItem.origin, { kind: 'external-ticket', provider: 'github', reference: 'owner/demo#4' });
   assert.equal(calls[0]?.operation.key, 'github-issue:11');
-  assert.deepEqual(calls[0]?.scope, { organizationId: 'owner-1', projectId: 'demo' });
+  assert.deepEqual(calls[0]?.scope, { organizationId: 'org-1', projectId: 'demo' });
   assert.equal(calls[0]?.source.kind, 'github');
 });
 
@@ -55,6 +55,13 @@ test('MVP-01 poller separates read-only discovery from intake and rejects unauth
   const reader = { async listIssues() { return [issue, { ...issue, senderId: 99 }]; } };
   const result = await new GitHubIssuePoller(reader, new GitHubIssueIntake(store, trust)).pollOnce(new AbortController().signal);
   assert.equal(result.accepted.length, 1); assert.equal(result.rejected, 1);
+});
+
+test('MVP-01 keeps organization scope independent from owner identity', async () => {
+  const calls: Scope[] = [];
+  const store: WorkItemStore = { async ingest(scope, _operation, source) { calls.push(scope); return record(source); }, async getByOrigin() { return undefined; }, async get() { throw new Error('unused'); }, async close() {} };
+  await new GitHubIssueIntake(store, { ...trust, organizationId: 'org-distinct', ownerId: 'owner-distinct', projectId: 'project-distinct' }).ingest(issue);
+  assert.deepEqual(calls, [{ organizationId: 'org-distinct', projectId: 'project-distinct' }]);
 });
 
 test('MVP-01 comments are revision-bound and bounded', () => {
@@ -212,12 +219,46 @@ test('MVP-01 coordinator survives repeated polling and approves only the current
   const items: WorkItemStore = { async ingest() { return record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }); }, async get() { return { workItem: item, version: 1, actor: 'runtime', sourceKind: 'github', digest: 'd'.repeat(64) }; }, async getByOrigin() { return undefined; }, async close() {} };
   const refiner: PlanRefiner = { async refine() { return structuredClone(config); } };
   const plans = new RevisionBoundPlanService(workflows, refiner); const poller: GitHubIssuePolling = { async pollOnce() { return { discovered: [], accepted: [{ workItem: item, version: 1, actor: 'runtime', sourceKind: 'github' as const, digest: 'd'.repeat(64) }], rejected: 0 }; } };
-  const coordinator = new GitHubMvpCoordinator({ organizationId: 'owner-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpointStore);
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpointStore);
   const first = await coordinator.synchronize(new AbortController().signal); const second = await coordinator.synchronize(new AbortController().signal);
   assert.equal(first[0]?.runId, second[0]?.runId); assert.equal(runs.size, 1);
   const approved = await coordinator.applyFeedback({ installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueNumber: 4, senderId: 13, action: 'approve', planRevision: 'plan-r1', policyRevision: config.plan.policyRevision });
   assert.equal(approved.approval, 'approved');
   await assert.rejects(coordinator.applyFeedback({ installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueNumber: 4, senderId: 13, action: 'approve', planRevision: 'plan-old', policyRevision: config.plan.policyRevision }), /stale/);
+});
+
+test('MVP-01 does not commit the polling cursor before refinement and checkpoint persistence', async () => {
+  let committed = 0;
+  let refineCalls = 0;
+  const item = record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }).workItem;
+  const poller: GitHubIssuePolling = {
+    async pollOnce() { return { discovered: [issue], accepted: [{ workItem: item, version: 1, actor: 'runtime', sourceKind: 'github' as const, digest: 'd'.repeat(64) }], rejected: 0 }; },
+    async commitCursor() { committed++; },
+  };
+  const workflows: WorkflowStore = { async create() { throw new Error('refinement failed'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const items: WorkItemStore = { async ingest() { throw new Error('unused'); }, async get() { return { workItem: item, version: 1, actor: 'runtime', sourceKind: 'github', digest: 'd'.repeat(64) }; }, async getByOrigin() { return undefined; }, async close() {} };
+  const refiner: PlanRefiner = { async refine() { refineCalls++; throw new Error('transient refinement failure'); } };
+  const plans = new RevisionBoundPlanService(workflows, refiner);
+  const checkpoints: GitHubMvpCheckpointStore = { async load() { return undefined; }, async save() {} };
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints);
+  await assert.rejects(coordinator.synchronize(new AbortController().signal), /transient refinement failure/);
+  assert.equal(refineCalls, 1); assert.equal(committed, 0);
+});
+
+test('MVP-01 commits the cursor only after the plan checkpoint succeeds', async () => {
+  let committed = 0;
+  const item = record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }).workItem;
+  const config = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as ProjectConfiguration; config.workItem = item; config.plan.workItemId = item.id; config.plan.revision = 'plan-cursor';
+  const run = createRun('run-cursor', config);
+  const workflows: WorkflowStore = { async create() { return run; }, async get() { return run; }, async apply() { return run; } };
+  const items: WorkItemStore = { async ingest() { return record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }); }, async get() { return { workItem: item, version: 1, actor: 'runtime', sourceKind: 'github', digest: 'd'.repeat(64) }; }, async getByOrigin() { return undefined; }, async close() {} };
+  const refiner: PlanRefiner = { async refine() { return structuredClone(config); } };
+  const poller: GitHubIssuePolling = { async pollOnce() { return { discovered: [issue], accepted: [{ workItem: item, version: 1, actor: 'runtime', sourceKind: 'github' as const, digest: 'd'.repeat(64) }], rejected: 0 }; }, async commitCursor() { committed++; } };
+  const plans = new RevisionBoundPlanService(workflows, refiner);
+  const checkpoints: GitHubMvpCheckpointStore = { async load() { return undefined; }, async save() {} };
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints);
+  await coordinator.synchronize(new AbortController().signal);
+  assert.equal(committed, 1);
 });
 
 test('MVP-01 comment publication is receipt-idempotent and does not retry an uncertain POST', async () => {

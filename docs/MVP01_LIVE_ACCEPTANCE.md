@@ -80,6 +80,7 @@ The configuration fields are:
     "installationId": 0,
     "repositoryId": 0,
     "repositoryFullName": "owner/repository",
+    "organizationId": "<approved organization>",
     "ownerId": "<approved owner>",
     "projectId": "<approved project>",
     "authorizedSenderId": 0

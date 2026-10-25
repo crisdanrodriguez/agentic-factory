@@ -10,6 +10,8 @@ export interface GitHubIssueReader {
 
 export interface GitHubIssuePolling {
   pollOnce(signal: AbortSignal): Promise<{ discovered: readonly GitHubIssueEvent[]; accepted: readonly IntakeRecord[]; rejected: number }>;
+  /** Commit the reader cursor after downstream processing is durable. */
+  commitCursor?(): Promise<void>;
 }
 
 export interface GitHubIssueWriter {

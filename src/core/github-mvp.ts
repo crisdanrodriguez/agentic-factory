@@ -37,6 +37,10 @@ export class GitHubMvpCoordinator {
   async synchronize(signal: AbortSignal): Promise<readonly MvpCheckpoint[]> {
     const result = await this.poller.pollOnce(signal); const checkpoints: MvpCheckpoint[] = [];
     for (const intake of result.accepted) checkpoints.push(await this.ensurePlan(intake, signal));
+    // A cursor is an acknowledgement of the complete required checkpoint. If
+    // refinement, workflow persistence, or this process is interrupted above,
+    // the cursor remains unchanged and the next pass reconciles the issue.
+    await this.poller.commitCursor?.();
     return checkpoints;
   }
 

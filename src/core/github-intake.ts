@@ -26,7 +26,7 @@ export function authorizeIssue(input: GitHubIssueSource): Scope {
   const issue = parseIssue(input.issue);
   const trust = input.trust;
   if (issue.installationId !== trust.installationId || issue.repositoryId !== trust.repositoryId || issue.repositoryFullName !== trust.repositoryFullName || issue.senderId !== trust.authorizedSenderId) reject();
-  const [organizationId, projectId] = [validIdentifier(trust.ownerId), validIdentifier(trust.projectId)];
+  const [organizationId, projectId] = [validIdentifier(trust.organizationId), validIdentifier(trust.projectId)];
   return { organizationId, projectId };
 }
 

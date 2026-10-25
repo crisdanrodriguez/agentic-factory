@@ -16,6 +16,7 @@ export interface GitHubTrust {
   installationId: number;
   repositoryId: number;
   repositoryFullName: string;
+  organizationId: string;
   ownerId: string;
   projectId: string;
   authorizedSenderId: number;

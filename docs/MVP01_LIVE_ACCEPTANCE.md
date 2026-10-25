@@ -103,6 +103,7 @@ The configuration fields are:
     "authorized": false,
     "codexHome": "/private/operator/codex-home"
   },
+  "allowGitHubSynchronization": false,
   "allowGitHubWrites": false,
   "allowOwnerApprovals": false
 }

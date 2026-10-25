@@ -17,6 +17,7 @@ const configSchema = z.strictObject({
   github: z.strictObject({ appId: z.number().int().positive(), installationId: z.number().int().positive(), repositoryId: z.number().int().positive(), repositoryFullName: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), privateKeyPath: z.string().min(1) }),
   stateDirectory: z.string().min(1),
   codex: z.strictObject({ executable: z.string().min(1), workspace: z.string().min(1), model: z.string().min(1).max(128), timeoutMs: z.number().int().min(1000).max(300000), maxOutputBytes: z.number().int().positive().max(1000000), maxCalls: z.number().int().positive().max(10), authorized: z.boolean(), codexHome: z.string().min(1).optional() }),
+  allowGitHubSynchronization: z.boolean(),
   allowGitHubWrites: z.boolean(),
   allowOwnerApprovals: z.boolean(),
 });
@@ -43,7 +44,7 @@ export async function createGitHubMvpRuntime(config: GitHubMvpRuntimeConfig) {
   const codexConfig = config.codex.codexHome ? { ...config.codex, codexHome: config.codex.codexHome } : { executable: config.codex.executable, workspace: config.codex.workspace, model: config.codex.model, timeoutMs: config.codex.timeoutMs, maxOutputBytes: config.codex.maxOutputBytes, maxCalls: config.codex.maxCalls, authorized: config.codex.authorized };
   const refiner = new AuthorizedCodexPlanRefiner(new CodexCliPlanTransport(codexConfig), { authorized: config.codex.authorized, model: config.codex.model, maxCalls: config.codex.maxCalls, maxOutputBytes: config.codex.maxOutputBytes });
   const plans = new RevisionBoundPlanService(workflows, refiner); const checkpoints = new WorkflowBackedMvpCheckpointStore(config.scope, workflows);
-  const coordinator = new GitHubMvpCoordinator(config.scope, config.trust, poller, items, plans, workflows, checkpoints, writer);
+  const coordinator = new GitHubMvpCoordinator(config.scope, config.trust, poller, items, plans, workflows, checkpoints, writer, config.allowGitHubSynchronization && config.codex.authorized);
   return {
     discover: async (signal: AbortSignal) => reader.listIssues(signal),
     synchronize: (signal: AbortSignal) => coordinator.synchronize(signal),

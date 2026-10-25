@@ -17,7 +17,7 @@ import { CodexCliPlanTransport } from '../src/adapters/codex/cli-transport.js';
 import { generateKeyPairSync } from 'node:crypto';
 import { GitHubAppCommentWriter, GitHubAppInstallation, GitHubAppIssueReader, NodeGitHubHttpsTransport, parseInstallationRepositoryPage, parseInstallationTokenResponse, parseIssueListResponse } from '../src/adapters/github/rest.js';
 import { GitHubMvpCoordinator, type MvpCheckpoint, type GitHubMvpCheckpointStore } from '../src/core/github-mvp.js';
-import type { GitHubIssuePolling } from '../src/ports/github-api.js';
+import type { GitHubIssuePolling, GitHubIssueReader } from '../src/ports/github-api.js';
 import { createRun, transition } from '../src/core/workflow.js';
 
 const issue = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueId: 11, issueNumber: 4, senderId: 13, senderLogin: 'owner', title: 'Add deterministic parser', body: 'Record only.', action: 'opened' as const, updatedAt: '2026-10-24T00:00:00Z' };
@@ -35,19 +35,18 @@ test('MVP-01 GitHub issue intake binds installation, repository and authorized s
 });
 
 test('MVP-01 repeats are idempotent and edits revise the existing canonical WorkItem', async () => {
-  const calls: IntakeOperation[] = [];
-  const existing = record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }); let originUpdatedAt = '2026-10-24T00:00:00.000Z';
+  const calls: IntakeOperation[] = []; let stored: IntakeRecord | undefined;
   const store: WorkItemStore = {
-    async ingest(_scope, operation) { calls.push(operation); if (operation.kind === 'revise') originUpdatedAt = '2026-10-24T00:01:00.000Z'; return existing; },
-    async getByOrigin() { return { ...existing, originUpdatedAt }; },
-    async get() { return existing; }, async close() {},
+    async ingest(_scope, operation, source) { calls.push(operation); stored = { ...record(source), originUpdatedAt: operation.kind === 'revise' ? '2026-10-24T00:01:00.000Z' : '2026-10-24T00:00:00.000Z' }; return stored; },
+    async getByOrigin() { return stored; },
+    async get() { if (!stored) throw new Error('missing'); return stored; }, async close() {},
   };
   const intake = new GitHubIssueIntake(store, trust);
   await intake.ingest(issue); await intake.ingest(issue);
   await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:01:00Z', body: 'Revised.' });
-  assert.deepEqual(calls.map((call) => call.kind), ['create', 'create', 'revise']);
-  assert.equal(calls[2]?.kind === 'revise' ? calls[2].expectedRevision : '', 'r1');
-  assert.deepEqual(await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:00:30Z', body: 'Out of order.' }), { ...existing, originUpdatedAt: '2026-10-24T00:01:00.000Z' });
+  assert.deepEqual(calls.map((call) => call.kind), ['create', 'revise']);
+  assert.equal(calls[1]?.kind === 'revise' ? calls[1].expectedRevision : '', 'r1');
+  assert.equal((await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:00:30Z', body: 'Out of order.' })).originUpdatedAt, '2026-10-24T00:01:00.000Z');
 });
 
 test('MVP-01 poller separates read-only discovery from intake and rejects unauthorized events', async () => {
@@ -62,6 +61,18 @@ test('MVP-01 keeps organization scope independent from owner identity', async ()
   const store: WorkItemStore = { async ingest(scope, _operation, source) { calls.push(scope); return record(source); }, async getByOrigin() { return undefined; }, async get() { throw new Error('unused'); }, async close() {} };
   await new GitHubIssueIntake(store, { ...trust, organizationId: 'org-distinct', ownerId: 'owner-distinct', projectId: 'project-distinct' }).ingest(issue);
   assert.deepEqual(calls, [{ organizationId: 'org-distinct', projectId: 'project-distinct' }]);
+});
+
+test('MVP-01 synchronization is denied before polling or intake by default', async () => {
+  let polled = 0;
+  const poller: GitHubIssuePolling = { async pollOnce() { polled++; throw new Error('must not poll'); } };
+  const workflows: WorkflowStore = { async create() { throw new Error('must not create'); }, async get() { throw new Error('must not read'); }, async apply() { throw new Error('must not apply'); } };
+  const items: WorkItemStore = { async ingest() { throw new Error('must not ingest'); }, async get() { throw new Error('must not read'); }, async getByOrigin() { throw new Error('must not read'); }, async close() {} };
+  const plans = new RevisionBoundPlanService(workflows, { async refine() { throw new Error('must not refine'); } });
+  const checkpoints: GitHubMvpCheckpointStore = { async load() { throw new Error('must not load'); }, async save() { throw new Error('must not save'); } };
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints);
+  await assert.rejects(coordinator.synchronize(new AbortController().signal), /not locally authorized/);
+  assert.equal(polled, 0);
 });
 
 test('MVP-01 comments are revision-bound and bounded', () => {
@@ -219,7 +230,7 @@ test('MVP-01 coordinator survives repeated polling and approves only the current
   const items: WorkItemStore = { async ingest() { return record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }); }, async get() { return { workItem: item, version: 1, actor: 'runtime', sourceKind: 'github', digest: 'd'.repeat(64) }; }, async getByOrigin() { return undefined; }, async close() {} };
   const refiner: PlanRefiner = { async refine() { return structuredClone(config); } };
   const plans = new RevisionBoundPlanService(workflows, refiner); const poller: GitHubIssuePolling = { async pollOnce() { return { discovered: [], accepted: [{ workItem: item, version: 1, actor: 'runtime', sourceKind: 'github' as const, digest: 'd'.repeat(64) }], rejected: 0 }; } };
-  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpointStore);
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpointStore, undefined, true);
   const first = await coordinator.synchronize(new AbortController().signal); const second = await coordinator.synchronize(new AbortController().signal);
   assert.equal(first[0]?.runId, second[0]?.runId); assert.equal(runs.size, 1);
   const approved = await coordinator.applyFeedback({ installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueNumber: 4, senderId: 13, action: 'approve', planRevision: 'plan-r1', policyRevision: config.plan.policyRevision });
@@ -240,7 +251,7 @@ test('MVP-01 does not commit the polling cursor before refinement and checkpoint
   const refiner: PlanRefiner = { async refine() { refineCalls++; throw new Error('transient refinement failure'); } };
   const plans = new RevisionBoundPlanService(workflows, refiner);
   const checkpoints: GitHubMvpCheckpointStore = { async load() { return undefined; }, async save() {} };
-  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints);
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints, undefined, true);
   await assert.rejects(coordinator.synchronize(new AbortController().signal), /transient refinement failure/);
   assert.equal(refineCalls, 1); assert.equal(committed, 0);
 });
@@ -256,8 +267,40 @@ test('MVP-01 commits the cursor only after the plan checkpoint succeeds', async 
   const poller: GitHubIssuePolling = { async pollOnce() { return { discovered: [issue], accepted: [{ workItem: item, version: 1, actor: 'runtime', sourceKind: 'github' as const, digest: 'd'.repeat(64) }], rejected: 0 }; }, async commitCursor() { committed++; } };
   const plans = new RevisionBoundPlanService(workflows, refiner);
   const checkpoints: GitHubMvpCheckpointStore = { async load() { return undefined; }, async save() {} };
-  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints);
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpoints, undefined, true);
   await coordinator.synchronize(new AbortController().signal);
+  assert.equal(committed, 1);
+});
+
+test('MVP-01 recovers an edited issue after refinement failure without a conflicting create', async () => {
+  const calls: IntakeOperation[] = []; let current: IntakeRecord | undefined; let batch = 0; let committed = 0;
+  const edited = { ...issue, action: 'opened' as const, updatedAt: '2026-10-24T00:02:00Z', body: 'Edited after interruption.' };
+  const reader: GitHubIssueReader = { async listIssues() { return [batch++ === 0 ? issue : edited]; }, async commitCursor() { committed++; } };
+  const store: WorkItemStore = {
+    async ingest(_scope, operation, source) {
+      calls.push(operation); if (operation.kind === 'create' && current) throw new Error('conflicting create');
+      const version = current ? 2 : 1; const base = record(source); const updatedAt = source.origin?.updatedAt ?? '2026-10-24T00:00:00Z';
+      const next: IntakeRecord = { ...base, workItem: { ...base.workItem, revision: `r${version}` }, version, originUpdatedAt: updatedAt };
+      current = next; return next;
+    },
+    async getByOrigin() { return current; }, async get() { if (!current) throw new Error('missing'); return current; }, async close() {},
+  };
+  const firstPoller = new GitHubIssuePoller(reader, new GitHubIssueIntake(store, trust));
+  const workflows: WorkflowStore = { async create(_scope, id, config) { return createRun(id, config); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const firstPlans = new RevisionBoundPlanService(workflows, { async refine() { throw new Error('transient refinement failure'); } });
+  const checkpoints: GitHubMvpCheckpointStore = { async load() { return undefined; }, async save() {} };
+  const first = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, firstPoller, store, firstPlans, workflows, checkpoints, undefined, true);
+  await assert.rejects(first.synchronize(new AbortController().signal), /transient refinement failure/);
+  assert.equal(committed, 0);
+
+  const config = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as ProjectConfiguration;
+  const secondPoller = new GitHubIssuePoller(reader, new GitHubIssueIntake(store, trust));
+  const secondPlans = new RevisionBoundPlanService(workflows, { async refine(input) { return { ...structuredClone(config), workItem: input.workItem, plan: { ...config.plan, workItemId: input.workItem.id } }; } });
+  const second = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, secondPoller, store, secondPlans, workflows, checkpoints, undefined, true);
+  const result = await second.synchronize(new AbortController().signal);
+  assert.equal(calls.map((call) => call.kind).join(','), 'create,revise');
+  assert.equal(calls[1]?.kind === 'revise' ? calls[1].expectedRevision : '', 'r1');
+  assert.equal(result[0]?.workItem.revision, 'r2');
   assert.equal(committed, 1);
 });
 

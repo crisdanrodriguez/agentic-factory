@@ -32,9 +32,10 @@ function feedbackAllowed(feedback: GitHubOwnerFeedback, trust: GitHubTrust, refe
 
 /** Restart-safe MVP-01 coordinator. It creates only plans and approvals; never starts execution. */
 export class GitHubMvpCoordinator {
-  constructor(private readonly scope: Scope, private readonly trust: GitHubTrust, private readonly poller: GitHubIssuePolling, private readonly items: WorkItemStore, private readonly plans: RevisionBoundPlanService, private readonly workflows: WorkflowStore, private readonly checkpoints: GitHubMvpCheckpointStore, private readonly comments?: GitHubIssueWriter) {}
+  constructor(private readonly scope: Scope, private readonly trust: GitHubTrust, private readonly poller: GitHubIssuePolling, private readonly items: WorkItemStore, private readonly plans: RevisionBoundPlanService, private readonly workflows: WorkflowStore, private readonly checkpoints: GitHubMvpCheckpointStore, private readonly comments?: GitHubIssueWriter, private readonly synchronizationAuthorized = false) {}
 
   async synchronize(signal: AbortSignal): Promise<readonly MvpCheckpoint[]> {
+    if (!this.synchronizationAuthorized) throw new Error('GitHub synchronization is not locally authorized.');
     const result = await this.poller.pollOnce(signal); const checkpoints: MvpCheckpoint[] = [];
     for (const intake of result.accepted) checkpoints.push(await this.ensurePlan(intake, signal));
     // A cursor is an acknowledgement of the complete required checkpoint. If

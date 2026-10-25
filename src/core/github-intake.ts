@@ -42,9 +42,11 @@ export class GitHubIssueIntake {
       origin: { provider: 'github', reference: `${issue.repositoryFullName}#${issue.issueNumber}`, updatedAt: issue.updatedAt },
     };
     const originReference = `${issue.repositoryFullName}#${issue.issueNumber}`;
-    const existing = issue.action === 'edited'
-      ? await this.store.getByOrigin(scope, 'github', originReference)
-      : undefined;
+    // Always reconcile by canonical origin before selecting create/revise. A
+    // process interruption can leave the cursor behind an edit, so the reader
+    // may classify that next delivery as "opened" even though the WorkItem
+    // already exists.
+    const existing = await this.store.getByOrigin(scope, 'github', originReference);
     if (existing?.originUpdatedAt && Date.parse(existing.originUpdatedAt) >= Date.parse(issue.updatedAt)) return existing;
     const operation: IntakeOperation = existing
       ? { kind: 'revise', key: `github-issue:${issue.issueId}:${issue.updatedAt}`, id: existing.workItem.id, expectedRevision: existing.workItem.revision }

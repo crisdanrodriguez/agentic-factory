@@ -159,9 +159,12 @@ export class GitHubAppIssueReader implements GitHubIssueReader {
   constructor(private readonly installation: GitHubAppInstallation, private readonly trust: GitHubTrust, private readonly cursor: GitHubCursorStore) {}
   async listIssues(signal: AbortSignal): Promise<readonly GitHubIssueEvent[]> {
     const since = await this.cursor.load(); const events: GitHubIssueEvent[] = []; let newest = since ?? '';
+    const cursorTime = since === null ? null : Date.parse(since);
+    if (cursorTime !== null && !Number.isFinite(cursorTime)) throw new Error('GitHub issue cursor is invalid.');
+    const overlapSince = cursorTime === null ? null : new Date(cursorTime - 1000).toISOString();
     let complete = false;
     for (let page = 1; page <= 10; page++) {
-      const query = since ? `&since=${encodeURIComponent(since)}` : '';
+      const query = overlapSince ? `&since=${encodeURIComponent(overlapSince)}` : '';
       const response = await this.installation.request('GET', `/repos/${this.trust.repositoryFullName}/issues?state=open&per_page=50&page=${page}${query}`, undefined, signal);
       const parsed = parseIssueListResponse(response.body);
       for (const issue of parsed) {

@@ -5,4 +5,5 @@ export interface WorkflowStore {
   get(scope: Scope, id: string): Promise<Run>;
   apply(scope: Scope, id: string, expectedVersion: number, eventId: string, command: Command): Promise<Run>;
   findByOrigin?(scope: Scope, provider: string, reference: string): Promise<Run | undefined>;
+  findById?(scope: Scope, id: string): Promise<Run | undefined>;
 }

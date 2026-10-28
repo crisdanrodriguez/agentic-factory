@@ -36,11 +36,21 @@ test('review regression: CI provisions PostgreSQL and runs every mandatory check
   assert.match(workflow, /image: postgres:18\.6@sha256:/);
   assert.match(workflow, /55432:5432/);
   assert.match(workflow, /--health-cmd/);
+  assert.match(workflow, /postgres:18\.6@sha256:[a-f0-9]{64}/);
+  assert.match(workflow, /MVP01B_INTAKE_DATABASE_URL:/);
+  assert.match(workflow, /MVP01B_REFINER_DATABASE_URL:/);
+  assert.match(workflow, /MVP01B_READER_DATABASE_URL:/);
   assertMandatoryWorkflow(workflow);
-  const commands = [...workflow.matchAll(/^\s+- run: (.+)$/gm)].map((match) => match[1]);
-  const required = ['npm ci --ignore-scripts --no-audit --no-fund', 'npm run deps:patch', 'npm run deps:check', 'npm run test:deps', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run db:migrate', 'npm run db:setup-local', 'npm run db:setup-queue', 'npm run test:compatibility', 'npm run test:state', 'npm run test:queue', 'npm run test:intake', 'npm run test:simulations'];
+  const commands = [...workflow.matchAll(/^[ \t]*(?:-[ \t]+)?run: (.+)$/gm)].map((match) => match[1]);
+  const required = ['npm ci --ignore-scripts --no-audit --no-fund', 'npm run deps:patch', 'npm run deps:check', 'npm run test:deps', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run db:migrate', 'npm run db:setup-local', 'npm run db:setup-queue', 'npm run test:compatibility', 'npm run test:state', 'npm run test:queue', 'npm run test:intake', 'npm run test:mvp01b', 'npm run test:simulations'];
+  assert.equal(commands.filter((command) => command === 'npm run db:migrate').length, 2, 'CI must verify a no-op migration rerun');
   let previous = -1;
   for (const command of required) { const index = commands.indexOf(command); assert.ok(index > previous, `Missing or out-of-order mandatory CI command: ${command}`); previous = index; }
+  const databaseTests = readFileSync('tests/database/mvp01b.test.ts', 'utf8');
+  assert.match(databaseTests, /process\.env\.CI === 'true'[\s\S]*Required MVP-01B PostgreSQL credentials are missing in CI/);
+  assert.match(databaseTests, /SHOW server_version[\s\S]*18\\\.6/);
+  assert.equal([...databaseTests.matchAll(/\{ skip:/g)].length, 3, 'The three database tests may skip only through their declared missing-URL gates');
+  assert.doesNotMatch(databaseTests, /test\.only|context\.skip\(/);
 });
 
 function assertMandatoryWorkflow(workflow: string): void {

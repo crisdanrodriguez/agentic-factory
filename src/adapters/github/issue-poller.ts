@@ -7,7 +7,7 @@ export type PollResult = { discovered: readonly GitHubIssueEvent[]; accepted: re
 
 /** A bounded, single-repository poll pass. It never writes to GitHub. */
 export class GitHubIssuePoller implements GitHubIssuePolling {
-  constructor(private readonly reader: GitHubIssueReader, private readonly intake: GitHubIssueIntake) {}
+  constructor(private readonly reader: GitHubIssueReader, private readonly intake: GitHubIssueIntake, private readonly durableIntake = false) {}
 
   async discover(signal: AbortSignal): Promise<readonly GitHubIssueEvent[]> {
     return this.reader.listIssues(signal);
@@ -17,7 +17,7 @@ export class GitHubIssuePoller implements GitHubIssuePolling {
     const accepted: IntakeRecord[] = [];
     let rejected = 0;
     for (const event of events) {
-      try { accepted.push(await this.intake.ingest(event)); }
+      try { accepted.push(await (this.durableIntake ? this.intake.ingestDurably(event) : this.intake.ingest(event))); }
       catch (error) {
         if (error instanceof GitHubIntakeError) { rejected++; continue; }
         throw error;

@@ -58,6 +58,18 @@ Tests use unique run identifiers and retain synthetic audit records. They do not
 
 The historical AF-004–006 implementation used `001-workflow` and pg-boss schema 46. AF-023 adds `002-work-items.cjs` for isolated intake heads, immutable revisions, and idempotency receipts, without altering that existing migration or workflow schema. Run `db:migrate` and `db:setup-local` before `npm run test:intake`; this mandatory suite uses the existing runtime roles plus the synthetic `af_peer` writer. Do not run tests against a business or production database.
 
+MVP-01B adds migration `004-github-refinement-intents.cjs`. Its forced-RLS
+`github_origins` table enforces one canonical GitHub origin per authorized
+organization/project, while `refinement_intents` is the sole durable source of
+refinement scheduling and claim state. Refinement is manually triggered by
+`github-mvp refine`; no background scheduler is enabled. The worker scans one
+due intent at a time using indexed pending and expired-lease paths. pg-boss
+remains reserved for core workflow execution. Intake identity columns are
+immutable by grant, and only bounded status, lease, retry, cancellation, and
+plan-result columns are updateable. The migration is additive; its number must be
+reconciled with the paused AF-029 migration before those branches can ever be
+integrated.
+
 ## Backup, shutdown, and migration recovery
 
 ```bash

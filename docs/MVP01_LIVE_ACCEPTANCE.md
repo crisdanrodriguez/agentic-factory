@@ -9,10 +9,12 @@ pull request, or merge code by itself.
 1. Create a dedicated PostgreSQL 18.6 instance with the reviewed image digest,
    a unique Compose project and volume, loopback-only networking, and
    synthetic data. Do not reuse AF-029, AF-031, or automated-test databases.
-2. Apply migrations 001 through 003 with the migration-only identity. Run the
+2. Apply migrations 001 through 004 with the migration-only identity. Run the
    migration command a second time and record the no-op result. Verify the
    GitHub origin columns and constraint, forced RLS on all application tables,
-   and the separate runtime role grants.
+   and separate `af_github_intake`, `af_github_refiner`, and workflow role
+   grants. The intake role must not insert or update Runs; the refiner may
+   create pending Runs but cannot update Runs, events, or approval state.
 3. Provision one organization, project, owner, installation binding, and one
    authorized repository. Keep identifiers and credentials in private files
    with mode 0600; never put them in GitHub issues, logs, reports, or the
@@ -66,15 +68,19 @@ is the only available mode.
 
 Build the reviewed worktree with Node.js 24.22.0 and npm 11.9.0, then create a
 0600 JSON file outside the repository and set only its path in
-`FACTORY_GITHUB_MVP_CONFIG`. Set the database password-bearing URL only in the
-environment variable named by `databaseUrlEnvironment`; do not put the URL in
-the JSON file.
+`FACTORY_GITHUB_MVP_CONFIG`. Set only the selected command's password-bearing
+database URL in the environment variable named by its capability-specific
+configuration field; do not put URLs in the JSON file. The intake role is
+`af_github_intake`, the refinement role is `af_github_refiner`, and the legacy
+workflow role is separately selected for publication or approval operations.
 
 The configuration fields are:
 
 ```json
 {
-  "databaseUrlEnvironment": "FACTORY_MVP01_DATABASE_URL",
+  "intakeDatabaseUrlEnvironment": "FACTORY_GITHUB_INTAKE_DATABASE_URL",
+  "refinementDatabaseUrlEnvironment": "FACTORY_GITHUB_REFINER_DATABASE_URL",
+  "workflowDatabaseUrlEnvironment": "FACTORY_MVP01_WORKFLOW_DATABASE_URL",
   "scope": { "organizationId": "<approved organization>", "projectId": "<approved project>" },
   "trust": {
     "installationId": 0,
@@ -103,7 +109,9 @@ The configuration fields are:
     "authorized": false,
     "codexHome": "/private/operator/codex-home"
   },
-  "allowGitHubSynchronization": false,
+  "allowGitHubDiscovery": false,
+  "allowGitHubIntake": false,
+  "allowCodexRefinement": false,
   "allowGitHubWrites": false,
   "allowOwnerApprovals": false
 }
@@ -120,19 +128,36 @@ FACTORY_GITHUB_MVP_CONFIG=/private/operator/mvp01.json \
 node dist/cli/index.js github-mvp discover
 ```
 
-After discovery is reviewed, run synchronization only with the database and
-Codex authorization configured. Synchronization records or revises canonical
-WorkItems and may invoke the explicitly authorized local Codex refinement
-transport; it does not publish comments or authorize execution:
+After discovery is reviewed, durable intake and Codex refinement are separate
+operator gates. Intake records or revises canonical WorkItems and refinement
+intents without invoking Codex:
 
 ```sh
 FACTORY_GITHUB_MVP_CONFIG=/private/operator/mvp01.json \
-node dist/cli/index.js github-mvp synchronize
+node dist/cli/index.js github-mvp intake
 ```
 
-Inject `FACTORY_MVP01_DATABASE_URL` through the owner’s private secret
-mechanism in the same Terminal before the command; never place its value in
-shell history or this document.
+Only after intake evidence is reviewed may the owner separately enable
+`allowCodexRefinement` and `codex.authorized`, then run:
+
+```sh
+FACTORY_GITHUB_MVP_CONFIG=/private/operator/mvp01.json \
+node dist/cli/index.js github-mvp refine
+```
+
+Refinement is manually triggered. Each invocation claims at most one due
+intent; there is no background scheduler. Restart recovery requires another
+authorized `github-mvp refine` invocation after any active lease expires.
+
+For intake, inject only `FACTORY_GITHUB_INTAKE_DATABASE_URL`, using the
+`af_github_intake` role. For refinement, inject only
+`FACTORY_GITHUB_REFINER_DATABASE_URL`, using the `af_github_refiner` role. The
+legacy workflow approval/comment commands use
+`FACTORY_MVP01_WORKFLOW_DATABASE_URL`. Inject only the selected command's URL
+through the owner’s private secret mechanism; never place its value in shell
+history or this document. The intake role cannot insert or update workflow
+Runs. The refiner can create pending Runs but cannot update Runs, events, or
+approval state.
 
 Set `codex.authorized` to `true` only after the owner has completed the private
 Codex login gate. Set `allowGitHubWrites` to `true` only to publish the exact

@@ -36,19 +36,24 @@ export class PostgresWorkflowStore implements WorkflowStore {
     } finally { client.release(); }
   }
   async create(scope: Scope, id: string, config: ProjectConfiguration): Promise<Run> {
-    return this.transaction(async (client) => {
-      const owner = await this.authorize(client, scope);
-      if (owner !== config.workItem.ownerId || scope.projectId !== config.workItem.projectId) throw new Error('Task ownership does not match authorized project.');
-      const run = createRun(id, config);
-      await client.query('INSERT INTO factory.runs VALUES ($1,$2,$3,$4,$5)', [scope.organizationId, scope.projectId, id, run.version, run]);
-      await client.query('INSERT INTO factory.revisions VALUES ($1,$2,$3,$4,$5)', [scope.organizationId, scope.projectId, id, config.plan.revision, config]);
-      return run;
-    });
+    return this.transaction((client) => this.createInTransaction(client, scope, id, config));
+  }
+  async createInTransaction(client: PoolClient, scope: Scope, id: string, config: ProjectConfiguration): Promise<Run> {
+    const owner = await this.authorize(client, scope);
+    if (owner !== config.workItem.ownerId || scope.projectId !== config.workItem.projectId) throw new Error('Task ownership does not match authorized project.');
+    const run = createRun(id, config);
+    await client.query('INSERT INTO factory.runs VALUES ($1,$2,$3,$4,$5)', [scope.organizationId, scope.projectId, id, run.version, run]);
+    await client.query('INSERT INTO factory.revisions VALUES ($1,$2,$3,$4,$5)', [scope.organizationId, scope.projectId, id, config.plan.revision, config]);
+    return run;
   }
   async get(scope: Scope, id: string): Promise<Run> {
     const result = await this.pool.query<{ state: Run }>('SELECT state FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3', [scope.organizationId, scope.projectId, id]);
     if (!result.rows[0]) throw new Error('Run is unavailable in the authorized scope.');
     return result.rows[0].state;
+  }
+  async findById(scope: Scope, id: string): Promise<Run | undefined> {
+    const result = await this.pool.query<{ state: Run }>('SELECT state FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3', [scope.organizationId, scope.projectId, id]);
+    return result.rows[0]?.state;
   }
   async findByOrigin(scope: Scope, provider: string, reference: string): Promise<Run | undefined> {
     const result = await this.pool.query<{ state: Run }>(`SELECT state FROM factory.runs

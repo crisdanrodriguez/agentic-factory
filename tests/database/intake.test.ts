@@ -97,7 +97,8 @@ test('AF-023 SQL enforces forced RLS, owner and actor identity, read-only roles 
     await assert.rejects(app.pool.query(`INSERT INTO factory.intake_revisions
       (organization_id,project_id,id,owner_id,version,actor,objective,context,source_kind,original)
       VALUES ($1,$2,$3,'synthetic-owner',1,'af_other','x','y','cli',$4)`, [scope.organizationId,scope.projectId,id,source().bytes]), /row-level security/);
-    await assert.rejects(reader.pool.query(`INSERT INTO factory.intake_receipts VALUES ($1,$2,'synthetic-owner',session_user,'create',$3,$4,$5,1)`, [scope.organizationId,scope.projectId,randomUUID(),'b'.repeat(64),id]), /row-level security/);
+    assert.equal((await reader.pool.query("SELECT has_table_privilege(session_user,'factory.intake_receipts','INSERT') AS can_insert")).rows[0]!.can_insert, false);
+    await assert.rejects(reader.pool.query(`INSERT INTO factory.intake_receipts VALUES ($1,$2,'synthetic-owner',session_user,'create',$3,$4,$5,1)`, [scope.organizationId,scope.projectId,randomUUID(),'b'.repeat(64),id]), /permission denied/);
     for (const table of ['intake_revisions', 'intake_receipts']) {
       await assert.rejects(app.pool.query(`UPDATE factory.${table} SET owner_id='forged' WHERE id=$1`, [id]), /permission denied/);
       await assert.rejects(app.pool.query(`DELETE FROM factory.${table} WHERE id=$1`, [id]), /permission denied/);

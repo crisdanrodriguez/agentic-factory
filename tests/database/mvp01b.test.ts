@@ -53,8 +53,8 @@ test('MVP-01B PostgreSQL canonical origin and intent transaction', { skip: !data
     } finally { await refiner.close(); }
     await assert.rejects(store.pool.query(`UPDATE factory.refinement_intents SET status='running',lease_token='forged' WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision='r1'`, [scope.organizationId, scope.projectId, results[0]!.workItem.id]), /Intake may only supersede obsolete refinement intents/i);
 
-    const recoveryReference = `owner/lost-ack#${Math.floor(Math.random() * 1000000)}`;
     const recoveryIssue = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueId: Math.floor(Math.random() * 1000000) + 1, issueNumber: 1, senderId: 13, senderLogin: 'synthetic-owner', title: 'Lost acknowledgement recovery', body: 'No execution.', action: 'opened' as const, updatedAt: '2026-10-24T00:00:00Z' };
+    const recoveryReference = `${recoveryIssue.repositoryFullName}#${recoveryIssue.issueNumber}`;
     let committedId = '';
     const lostAckStore: WorkItemStore = {
       async get(scopeValue, id, revision) { return store.get(scopeValue, id, revision); },
@@ -77,6 +77,11 @@ test('MVP-01B PostgreSQL canonical origin and intent transaction', { skip: !data
       const rows = await store.pool.query(`SELECT count(*)::int AS count FROM factory.${table} WHERE organization_id=$1 AND project_id=$2 AND ${table === 'github_origins' ? 'reference' : table === 'refinement_intents' ? 'origin_reference' : 'id'}=$3`, [scope.organizationId, scope.projectId, table === 'github_origins' || table === 'refinement_intents' ? recoveryReference : committedId]);
       assert.equal(rows.rows[0]!.count, 1, `${table} must reconcile to one durable record after restart`);
     }
+    const cleanupIntents = new PostgresRefinementIntentStore(refinerUrl!);
+    try {
+      await cleanupIntents.cancel(scope, results[0]!.workItem.id, 'r1');
+      await cleanupIntents.cancel(scope, recovered.workItem.id, 'r1');
+    } finally { await cleanupIntents.close(); }
   } finally { await store.close(); }
 });
 
@@ -104,6 +109,7 @@ test('MVP-01B PostgreSQL lease replacement, late fencing, supersession, and canc
   try {
     const first = await store.ingestWithRefinementIntent!(scope, operation(`mvp01b-fence-${Math.floor(Math.random() * 1000000)}`), source('2026-10-24T00:00:00Z'), { sourceRevision: 'r1', originProvider: 'github', originReference: reference });
     const oldClaim = await intents.claimDue(scope, 'worker-old', 30); assert.ok(oldClaim);
+    assert.equal(oldClaim.workItemId, first.workItem.id, 'the lease test must claim its own pending intent');
     await intents.pool.query(`UPDATE factory.refinement_intents SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision='r1'`, [scope.organizationId, scope.projectId, first.workItem.id]);
     const replacement = await intents.claimDue(scope, 'worker-new', 30); assert.ok(replacement); assert.notEqual(replacement.leaseToken, oldClaim.leaseToken);
     await assert.rejects(intents.transaction((client) => intents.complete(client, oldClaim, 'late-old-run')), /stale|cancelled/i);

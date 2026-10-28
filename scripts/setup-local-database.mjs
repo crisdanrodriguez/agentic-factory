@@ -32,7 +32,10 @@ try {
     await client.query(`GRANT USAGE ON SCHEMA factory TO ${role}`);
     if (role === 'af_peer') {
       await client.query('REVOKE ALL ON factory.projects, factory.runs, factory.revisions, factory.events, factory.receipts FROM af_peer');
+      await client.query('REVOKE ALL ON factory.intake_heads, factory.intake_revisions, factory.intake_receipts FROM af_peer');
       await client.query('GRANT SELECT ON factory.memberships, factory.intake_heads, factory.intake_revisions, factory.intake_receipts TO af_peer');
+      await client.query('GRANT INSERT ON factory.intake_heads, factory.intake_revisions, factory.intake_receipts TO af_peer');
+      await client.query('GRANT UPDATE (version) ON factory.intake_heads TO af_peer');
     } else if (role === 'af_reader') {
       await client.query(`GRANT SELECT ON ALL TABLES IN SCHEMA factory TO ${role}`);
     } else if (role === 'af_github_intake') {

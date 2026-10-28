@@ -32,14 +32,15 @@ test('MVP-01B PostgreSQL canonical origin and intent transaction', { skip: !data
     const reader = new PostgresWorkItemStore(readerUrl ?? databaseUrl!.replace('af_github_intake:', 'af_reader:'));
     try { await assert.rejects(reader.pool.query('INSERT INTO factory.refinement_intents (organization_id,project_id,work_item_id,source_revision,origin_provider,origin_reference) VALUES ($1,$2,$3,$4,$5,$6)', [scope.organizationId, scope.projectId, results[0]!.workItem.id, 'r1', 'github', reference]), /row-level security|permission denied/); }
     finally { await reader.close(); }
-    const privileges = await store.pool.query<{ intake_run_insert: boolean; intake_run_update: boolean; refiner_run_insert: boolean; refiner_run_update: boolean; refiner_event_insert: boolean; intake_can_approve: boolean; refiner_can_approve: boolean }>(`SELECT
+    const privileges = await store.pool.query<{ intake_run_insert: boolean; intake_run_update: boolean; intake_intent_next_attempt_update: boolean; refiner_run_insert: boolean; refiner_run_update: boolean; refiner_event_insert: boolean; intake_can_approve: boolean; refiner_can_approve: boolean }>(`SELECT
       has_table_privilege('af_github_intake','factory.runs','INSERT') AS intake_run_insert,
       has_table_privilege('af_github_intake','factory.runs','UPDATE') AS intake_run_update,
+      has_column_privilege('af_github_intake','factory.refinement_intents','next_attempt_at','UPDATE') AS intake_intent_next_attempt_update,
       has_table_privilege('af_github_refiner','factory.runs','INSERT') AS refiner_run_insert,
       has_table_privilege('af_github_refiner','factory.runs','UPDATE') AS refiner_run_update,
       has_table_privilege('af_github_refiner','factory.events','INSERT') AS refiner_event_insert,
       (SELECT can_approve FROM factory.memberships WHERE database_role=session_user AND organization_id=$1 AND project_id=$2) AS intake_can_approve`, [scope.organizationId, scope.projectId]);
-    assert.deepEqual(privileges.rows[0], { intake_run_insert: false, intake_run_update: false, refiner_run_insert: true, refiner_run_update: false, refiner_event_insert: false, intake_can_approve: false });
+    assert.deepEqual(privileges.rows[0], { intake_run_insert: false, intake_run_update: false, intake_intent_next_attempt_update: true, refiner_run_insert: true, refiner_run_update: false, refiner_event_insert: false, intake_can_approve: false });
     const roleAttributes = await store.pool.query<{ rolname: string; rolsuper: boolean; rolcreatedb: boolean; rolcreaterole: boolean; rolbypassrls: boolean; rolinherit: boolean; member_of_app: boolean }>(`SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls,rolinherit,
       pg_has_role(rolname,'af_app','MEMBER') AS member_of_app FROM pg_roles WHERE rolname IN ('af_github_intake','af_github_refiner') ORDER BY rolname`);
     assert.equal(roleAttributes.rowCount, 2);

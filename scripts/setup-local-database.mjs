@@ -42,7 +42,7 @@ try {
       await client.query('GRANT SELECT ON factory.memberships, factory.projects, factory.intake_heads, factory.intake_revisions, factory.intake_receipts, factory.github_origins, factory.refinement_intents TO af_github_intake');
       await client.query('GRANT INSERT ON factory.intake_heads, factory.intake_revisions, factory.intake_receipts, factory.github_origins, factory.refinement_intents TO af_github_intake');
       await client.query('GRANT UPDATE (version) ON factory.intake_heads TO af_github_intake');
-      await client.query('GRANT UPDATE (status,cancellation_requested,lease_token,lease_expires_at,updated_at) ON factory.refinement_intents TO af_github_intake');
+      await client.query('GRANT UPDATE (status,next_attempt_at,cancellation_requested,lease_token,lease_expires_at,updated_at) ON factory.refinement_intents TO af_github_intake');
     } else if (role === 'af_github_refiner') {
       await client.query('GRANT SELECT ON factory.memberships, factory.projects, factory.intake_heads, factory.intake_revisions, factory.github_origins, factory.refinement_intents, factory.runs TO af_github_refiner');
       await client.query('GRANT UPDATE (status,attempt_count,next_attempt_at,lease_token,lease_expires_at,cancellation_requested,plan_run_id,last_error,updated_at) ON factory.refinement_intents TO af_github_refiner');

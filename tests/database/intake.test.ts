@@ -66,7 +66,7 @@ test('AF-023 receipt identity includes actor and operation, with organization is
   try {
     const peerAccess = (await peer.pool.query(`SELECT
       has_table_privilege(session_user,'factory.intake_heads','INSERT') AS can_insert_intake,
-      has_table_privilege(session_user,'factory.intake_heads','UPDATE') AS can_update_intake,
+      has_column_privilege(session_user,'factory.intake_heads','version','UPDATE') AS can_update_intake,
       has_table_privilege(session_user,'factory.runs','INSERT') AS can_insert_runs,
       has_table_privilege(session_user,'factory.runs','UPDATE') AS can_update_runs,
       (SELECT can_approve FROM factory.memberships WHERE database_role=session_user AND organization_id=$1 AND project_id=$2) AS can_approve`, [scope.organizationId,scope.projectId])).rows[0];

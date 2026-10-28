@@ -41,7 +41,7 @@ test('review regression: CI provisions PostgreSQL and runs every mandatory check
   assert.match(workflow, /MVP01B_REFINER_DATABASE_URL:/);
   assert.match(workflow, /MVP01B_READER_DATABASE_URL:/);
   assertMandatoryWorkflow(workflow);
-  const commands = [...workflow.matchAll(/^[ \t]+run: (.+)$/gm)].map((match) => match[1]);
+  const commands = [...workflow.matchAll(/^[ \t]*(?:-[ \t]+)?run: (.+)$/gm)].map((match) => match[1]);
   const required = ['npm ci --ignore-scripts --no-audit --no-fund', 'npm run deps:patch', 'npm run deps:check', 'npm run test:deps', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run db:migrate', 'npm run db:setup-local', 'npm run db:setup-queue', 'npm run test:compatibility', 'npm run test:state', 'npm run test:queue', 'npm run test:intake', 'npm run test:mvp01b', 'npm run test:simulations'];
   assert.equal(commands.filter((command) => command === 'npm run db:migrate').length, 2, 'CI must verify a no-op migration rerun');
   let previous = -1;

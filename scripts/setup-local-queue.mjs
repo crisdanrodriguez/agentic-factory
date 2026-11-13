@@ -6,7 +6,8 @@ const boss = new PgBoss({ connectionString: process.env.FACTORY_MIGRATION_URL, s
 boss.on('error', () => { process.exitCode = 1; });
 try {
   await client.connect();
-  if ((await client.query('SELECT current_database() AS name')).rows[0].name !== 'agentic_factory_local') throw new Error('Synthetic queue setup is restricted to agentic_factory_local.');
+  const expectedDatabase = process.env.FACTORY_SETUP_DATABASE ?? 'agentic_factory_local';
+  if ((await client.query('SELECT current_database() AS name')).rows[0].name !== expectedDatabase) throw new Error(`Synthetic queue setup is restricted to ${expectedDatabase}.`);
   await boss.start();
   await boss.createQueue('workflow', { retryLimit: 2, retryDelay: 1, expireInSeconds: 30 });
   await client.query('GRANT USAGE ON SCHEMA factory_queue TO af_app');

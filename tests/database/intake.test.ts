@@ -64,6 +64,13 @@ test('AF-023 receipt identity includes actor and operation, with organization is
   const app = new PostgresWorkItemStore(url()); const peer = new PostgresWorkItemStore(url('af_peer')); const other = new PostgresWorkItemStore(url('af_other'));
   const key = randomUUID(); const otherScope = { ...scope, organizationId: 'synthetic-org-b' };
   try {
+    const peerAccess = (await peer.pool.query(`SELECT
+      has_table_privilege(session_user,'factory.intake_heads','INSERT') AS can_insert_intake,
+      has_column_privilege(session_user,'factory.intake_heads','version','UPDATE') AS can_update_intake,
+      has_table_privilege(session_user,'factory.runs','INSERT') AS can_insert_runs,
+      has_table_privilege(session_user,'factory.runs','UPDATE') AS can_update_runs,
+      (SELECT can_approve FROM factory.memberships WHERE database_role=session_user AND organization_id=$1 AND project_id=$2) AS can_approve`, [scope.organizationId,scope.projectId])).rows[0];
+    assert.deepEqual(peerAccess, { can_insert_intake: true, can_update_intake: true, can_insert_runs: false, can_update_runs: false, can_approve: false });
     const first = await app.ingest(scope, { kind: 'create', key }, source());
     const second = await peer.ingest(scope, { kind: 'create', key }, source());
     assert.notEqual(first.workItem.id, second.workItem.id); assert.equal(second.actor, 'af_peer');
@@ -87,15 +94,18 @@ test('AF-023 SQL enforces forced RLS, owner and actor identity, read-only roles 
     assert.equal(tables.length, 3); assert.ok(tables.every((r) => r.relrowsecurity && r.relforcerowsecurity));
     assert.deepEqual(await reader.get(scope, id), first);
     await assert.rejects(reader.ingest(scope, { kind: 'create', key: randomUUID() }, source()), /not authorized/);
-    for (const [organization, owner, role] of [['synthetic-org-b', 'synthetic-owner', app], [scope.organizationId, 'forged-owner', app], [scope.organizationId, 'synthetic-owner', reader]] as const) {
-      await assert.rejects(role.pool.query('INSERT INTO factory.intake_heads VALUES ($1,$2,$3,$4,1)', [organization, scope.projectId, randomUUID(), owner]), /row-level security/);
+    for (const [organization, owner] of [['synthetic-org-b', 'synthetic-owner'], [scope.organizationId, 'forged-owner']] as const) {
+      await assert.rejects(app.pool.query('INSERT INTO factory.intake_heads VALUES ($1,$2,$3,$4,1)', [organization, scope.projectId, randomUUID(), owner]), /row-level security/);
     }
+    assert.equal((await reader.pool.query("SELECT has_table_privilege(session_user,'factory.intake_heads','INSERT') AS can_insert")).rows[0]!.can_insert, false);
+    await assert.rejects(reader.pool.query('INSERT INTO factory.intake_heads VALUES ($1,$2,$3,$4,1)', [scope.organizationId, scope.projectId, randomUUID(), 'synthetic-owner']), /permission denied/);
     await assert.rejects(app.pool.query(`INSERT INTO factory.intake_receipts VALUES ($1,$2,'synthetic-owner','af_other','create',$3,$4,$5,1)`, [scope.organizationId, scope.projectId, randomUUID(), 'a'.repeat(64), id]), /row-level security/);
     await assert.rejects(app.pool.query(`INSERT INTO factory.intake_receipts VALUES ($1,$2,'forged-owner',session_user,'create',$3,$4,$5,1)`, [scope.organizationId, scope.projectId, randomUUID(), 'a'.repeat(64), id]), /row-level security/);
     await assert.rejects(app.pool.query(`INSERT INTO factory.intake_revisions
       (organization_id,project_id,id,owner_id,version,actor,objective,context,source_kind,original)
       VALUES ($1,$2,$3,'synthetic-owner',1,'af_other','x','y','cli',$4)`, [scope.organizationId,scope.projectId,id,source().bytes]), /row-level security/);
-    await assert.rejects(reader.pool.query(`INSERT INTO factory.intake_receipts VALUES ($1,$2,'synthetic-owner',session_user,'create',$3,$4,$5,1)`, [scope.organizationId,scope.projectId,randomUUID(),'b'.repeat(64),id]), /row-level security/);
+    assert.equal((await reader.pool.query("SELECT has_table_privilege(session_user,'factory.intake_receipts','INSERT') AS can_insert")).rows[0]!.can_insert, false);
+    await assert.rejects(reader.pool.query(`INSERT INTO factory.intake_receipts VALUES ($1,$2,'synthetic-owner',session_user,'create',$3,$4,$5,1)`, [scope.organizationId,scope.projectId,randomUUID(),'b'.repeat(64),id]), /permission denied/);
     for (const table of ['intake_revisions', 'intake_receipts']) {
       await assert.rejects(app.pool.query(`UPDATE factory.${table} SET owner_id='forged' WHERE id=$1`, [id]), /permission denied/);
       await assert.rejects(app.pool.query(`DELETE FROM factory.${table} WHERE id=$1`, [id]), /permission denied/);

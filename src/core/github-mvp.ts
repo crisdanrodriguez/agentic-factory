@@ -34,6 +34,14 @@ function feedbackAllowed(feedback: GitHubOwnerFeedback, trust: GitHubTrust, refe
 export class GitHubMvpCoordinator {
   constructor(private readonly scope: Scope, private readonly trust: GitHubTrust, private readonly poller: GitHubIssuePolling, private readonly items: WorkItemStore, private readonly plans: RevisionBoundPlanService, private readonly workflows: WorkflowStore, private readonly checkpoints: GitHubMvpCheckpointStore, private readonly comments?: GitHubIssueWriter, private readonly synchronizationAuthorized = false) {}
 
+  /** Durable intake is deliberately independent from refinement and Codex. */
+  async intake(signal: AbortSignal): Promise<readonly IntakeRecord[]> {
+    if (!this.synchronizationAuthorized) throw new Error('GitHub intake is not locally authorized.');
+    const result = await this.poller.pollOnce(signal);
+    await this.poller.commitCursor?.();
+    return result.accepted;
+  }
+
   async synchronize(signal: AbortSignal): Promise<readonly MvpCheckpoint[]> {
     if (!this.synchronizationAuthorized) throw new Error('GitHub synchronization is not locally authorized.');
     const result = await this.poller.pollOnce(signal); const checkpoints: MvpCheckpoint[] = [];

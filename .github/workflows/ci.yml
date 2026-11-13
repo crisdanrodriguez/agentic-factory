@@ -27,6 +27,9 @@ jobs:
           --health-retries 20
     env:
       FACTORY_MIGRATION_URL: postgres://af_migrator:synthetic-local-migration-only@127.0.0.1:55432/agentic_factory_local
+      MVP01B_INTAKE_DATABASE_URL: postgres://af_github_intake:synthetic-local-runtime-only@127.0.0.1:55432/agentic_factory_local
+      MVP01B_REFINER_DATABASE_URL: postgres://af_github_refiner:synthetic-local-runtime-only@127.0.0.1:55432/agentic_factory_local
+      MVP01B_READER_DATABASE_URL: postgres://af_reader:synthetic-local-runtime-only@127.0.0.1:55432/agentic_factory_local
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -44,12 +47,15 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run db:migrate
+      - name: Verify migrations are a no-op on rerun
+        run: npm run db:migrate
       - run: npm run db:setup-local
       - run: npm run db:setup-queue
       - run: npm run test:compatibility
       - run: npm run test:state
       - run: npm run test:queue
       - run: npm run test:intake
+      - run: npm run test:mvp01b
       - run: npm run test:simulations
       - run: node dist/cli/index.js --help
       - run: node dist/cli/index.js validate fixtures/software-general.json

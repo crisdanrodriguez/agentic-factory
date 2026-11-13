@@ -57,7 +57,14 @@ test('AF-004 enforces RLS and separate migration privileges under real non-privi
     await other.create(hiddenScope, id, fixture());
     await assert.rejects(store.get(hiddenScope, id), /unavailable/);
     assert.equal((await store.pool.query('SELECT * FROM factory.runs WHERE organization_id=$1', ['synthetic-org-b'])).rowCount, 0);
-    await assert.rejects(store.pool.query('INSERT INTO factory.runs VALUES ($1,$2,$3,0,$4)', ['synthetic-org-b', scope.projectId, randomUUID(), { id: 'forged' }]), /row-level security/);
+    const runId = randomUUID();
+    await assert.rejects(
+      store.pool.query('INSERT INTO factory.runs VALUES ($1,$2,$3,0,$4)', ['synthetic-org-b', scope.projectId, runId, { id: 'forged' }]),
+      /(row-level security|A non-approver may only create a pending Run)/,
+    );
+    assert.equal((await other.pool.query('SELECT id FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3', ['synthetic-org-b', scope.projectId, runId])).rowCount, 0);
+    const runRls = (await store.pool.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>("SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='factory.runs'::regclass")).rows[0];
+    assert.deepEqual(runRls, { relrowsecurity: true, relforcerowsecurity: true });
     await assert.rejects(store.pool.query("SET ROLE af_migrator"), /permission denied/);
     await assert.rejects(store.pool.query('CREATE TABLE factory.forbidden (id int)'), /permission denied/);
     await assert.rejects(store.pool.query("UPDATE factory.memberships SET can_approve=true"), /permission denied/);

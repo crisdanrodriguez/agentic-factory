@@ -9,22 +9,19 @@ Web extensions and the nontechnical experience are separate roadmap branches. Te
 
 **Language requirement:** all project-authored files, documentation, prompts, code comments, test descriptions, CLI messages, and engineering materials must be in English, as defined in AGENTS.md. The original 28 tickets retain their acceptance criteria; two English-language Telegram tickets are added.
 
-## Current GitHub MVP-01 increment
+## Current GitHub MVP-01B increment
 
-**Status:** Active in the isolated `feat/mvp-01-github-control` worktree. This
-increment combines the smallest AF-008/009/010/012 slice needed for one
-authorized GitHub Issue to become a canonical WorkItem and receive a
-revision-bound proposed plan and owner approval. The implementation is
-offline-first; live App credentials, GitHub writes, model calls and execution
-remain explicit operator gates. AF-029 and AF-031 remain paused and unchanged.
+**Status:** Active from `main` at `9bac1468` on the dedicated
+`feat/mvp-01b-durable-intake` branch. This increment separates GitHub
+read-only discovery, durable WorkItem intake, and Codex refinement. AF-029 and
+AF-031 remain paused and unchanged.
 
-**Acceptance evidence:** migration 003 is applied and rerun on a dedicated
-synthetic PostgreSQL instance; the deterministic suite covers provenance,
-idempotency, edits, authorization, bounded Codex refinement and comments. A
-real read-only App exchange, installation/repository validation, and discovery
-of issue #1 in `agentic-factory-testbed` passed with no cursor, WorkItem,
-comment, model, or execution side effects. Synchronization, plan refinement,
-owner approval, and all writes remain unvalidated and separately gated.
+**MVP-01 evidence:** migration 003 and the read-only App discovery acceptance
+are complete. The live discovery of issue #1 in `agentic-factory-testbed`
+performed no cursor, WorkItem, comment, model, or execution side effect.
+MVP-01B adds the offline durable-intake/refinement implementation; live intake,
+Codex refinement, comments, approvals, execution, and publication remain
+unvalidated and separately gated.
 
 ## AF-001 — Define the Vision, Scope, and Trust Boundaries
 

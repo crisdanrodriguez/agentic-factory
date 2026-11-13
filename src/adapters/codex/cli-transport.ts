@@ -24,7 +24,7 @@ export class CodexCliPlanTransport implements CodexPlanTransport {
   constructor(private readonly config: CodexCliConfig) {}
   async refine(request: CodexPlanRequest, signal: AbortSignal): Promise<unknown> {
     if (!this.config.authorized) throw new Error('Codex CLI use is not locally authorized.');
-    if (!this.config.executable || !this.config.workspace || !Number.isSafeInteger(this.config.timeoutMs) || this.config.timeoutMs < 1000 || this.config.timeoutMs > 300_000 || !Number.isSafeInteger(this.config.maxOutputBytes) || this.config.maxOutputBytes < 1 || this.config.maxOutputBytes > 1_000_000) throw new Error('Codex CLI bounds are invalid.');
+    if (!this.config.executable || !this.config.workspace || !Number.isSafeInteger(this.config.timeoutMs) || this.config.timeoutMs < 1000 || this.config.timeoutMs > 240_000 || !Number.isSafeInteger(this.config.maxOutputBytes) || this.config.maxOutputBytes < 1 || this.config.maxOutputBytes > 1_000_000) throw new Error('Codex CLI bounds are invalid.');
     const directory = await mkdtemp(join(tmpdir(), 'agentic-factory-codex-'), { encoding: 'utf8' });
     const outputPath = join(directory, 'last-message.json');
     const prompt = JSON.stringify({ task: 'Return one ProjectConfiguration JSON object for this WorkItem. Do not execute commands, call external services, or include markdown.', workItem: request.workItem, sourceRevision: request.sourceRevision, model: request.model });

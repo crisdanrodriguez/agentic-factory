@@ -34,6 +34,15 @@ export class GitHubIssueIntake {
   constructor(private readonly store: WorkItemStore, private readonly trust: GitHubIssueSource['trust']) {}
 
   async ingest(issueValue: unknown): Promise<IntakeRecord> {
+    return this.ingestInternal(issueValue, false);
+  }
+
+  /** Intake mode persists the WorkItem and its refinement intent in one store transaction. */
+  async ingestDurably(issueValue: unknown): Promise<IntakeRecord> {
+    return this.ingestInternal(issueValue, true);
+  }
+
+  private async ingestInternal(issueValue: unknown, durable: boolean): Promise<IntakeRecord> {
     const issue = parseIssue(issueValue);
     const scope = authorizeIssue({ issue, trust: this.trust });
     const source: IntakeSource = {
@@ -47,10 +56,21 @@ export class GitHubIssueIntake {
     // may classify that next delivery as "opened" even though the WorkItem
     // already exists.
     const existing = await this.store.getByOrigin(scope, 'github', originReference);
-    if (existing?.originUpdatedAt && Date.parse(existing.originUpdatedAt) >= Date.parse(issue.updatedAt)) return existing;
+    const existingTime = existing?.originUpdatedAt ? Date.parse(existing.originUpdatedAt) : undefined;
+    const incomingTime = Date.parse(issue.updatedAt);
+    const sameContent = existing?.workItem.objective === issue.title.trim() && existing.workItem.context === issue.body.trim();
+    if (existing && existingTime !== undefined && (existingTime > incomingTime || (existingTime === incomingTime && sameContent))) return existing;
     const operation: IntakeOperation = existing
-      ? { kind: 'revise', key: `github-issue:${issue.issueId}:${issue.updatedAt}`, id: existing.workItem.id, expectedRevision: existing.workItem.revision }
+      ? { kind: 'revise', key: `github-issue:${issue.issueId}:${existing.workItem.revision.slice(1)}`, id: existing.workItem.id, expectedRevision: existing.workItem.revision }
       : { kind: 'create', key: `github-issue:${issue.issueId}` };
+    if (durable && this.store.ingestWithRefinementIntent) {
+      const nextVersion = existing ? Number(existing.workItem.revision.slice(1)) + 1 : 1;
+      return this.store.ingestWithRefinementIntent(scope, operation, source, {
+        sourceRevision: `r${nextVersion}`,
+        originProvider: 'github',
+        originReference,
+      });
+    }
     return this.store.ingest(scope, operation, source);
   }
 }

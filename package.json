@@ -29,7 +29,8 @@
     "test:sandbox": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/sandbox/*.test.js && python3 tests/sandbox/feasibility.py",
     "sandbox:broker": "node dist/runtime/sandbox-broker.js",
     "sandbox:image": "node scripts/prepare-sandbox-image.mjs",
-    "test:intake": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/intake.test.js"
+    "test:intake": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/database/intake.test.js",
+    "test:mvp01b": "npm run deps:check && tsc --project tsconfig.test.json && node --test --test-concurrency=1 --test-reporter=spec .test-build/tests/mvp01b-github.test.js .test-build/tests/database/mvp01b.test.js"
   },
   "dependencies": {
     "node-pg-migrate": "9.0.0",

@@ -46,13 +46,14 @@ subtasks, deterministic tests, independent review, bounded corrections, and a
 Draft PR. No automatic merge, deployment, paid agent use, or production data is
 allowed.
 
-The current MVP-01 implementation provides the validated intake and approval
-contracts, an additive migration for GitHub provenance, a bounded polling seam,
-revision-bound comment formatting, and an explicitly authorized Codex
-refinement seam. One owner-authorized read-only discovery against the approved
-test repository has passed without creating WorkItems or advancing the cursor.
-Synchronization, model calls, comments, approvals, and execution remain
-separate owner-approved gates and are not accepted by discovery evidence.
+MVP-01B now separates the next acceptance boundary into durable intake and
+refinement. Durable intake writes the canonical WorkItem, immutable revision,
+receipt, and a PostgreSQL refinement intent atomically, then acknowledges the
+polling cursor without waiting for Codex. Refinement claims those intents with
+bounded leases and retries and remains independently authorized. Read-only
+discovery is accepted; durable intake and refinement still require their own
+offline and live acceptance gates. Comments, approvals, execution, and
+publication remain disabled.
 
 The native REST transport uses Node's TLS HTTPS facilities, a fixed
 `api.github.com` origin, installation-token exchange, repository identity

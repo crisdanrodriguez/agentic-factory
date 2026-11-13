@@ -37,7 +37,7 @@ export class PostgresWorkItemStore implements WorkItemStore {
       return result.rows[0] ? record(result.rows[0]) : undefined;
     } finally { client.release(); }
   }
-  async ingest(scope: Scope, operation: IntakeOperation, source: IntakeSource): Promise<IntakeRecord> {
+  private async ingestTransaction(scope: Scope, operation: IntakeOperation, source: IntakeSource, intent?: { sourceRevision: string; originProvider: string; originReference: string }): Promise<IntakeRecord> {
     scope = { organizationId: validIdentifier(scope.organizationId), projectId: validIdentifier(scope.projectId) };
     // Snapshot caller-owned bytes before any asynchronous operation.
     source = { kind: source.kind, bytes: Buffer.from(source.bytes), ...(source.origin ? { origin: { ...source.origin } } : {}) };
@@ -75,6 +75,7 @@ export class PostgresWorkItemStore implements WorkItemStore {
       if (!item.success) fail('Invalid authorized WorkItem configuration.');
       const identity = [scope.organizationId, scope.projectId, id];
       if (operation.kind === 'create') {
+        if (source.origin) await client.query('SAVEPOINT github_origin_create');
         await client.query('INSERT INTO factory.intake_heads VALUES ($1,$2,$3,$4,1)', [...identity, owner]);
       } else {
         const changed = await client.query(`UPDATE factory.intake_heads SET version=version+1
@@ -84,11 +85,55 @@ export class PostgresWorkItemStore implements WorkItemStore {
       await client.query(`INSERT INTO factory.intake_revisions
         (organization_id,project_id,id,owner_id,version,objective,context,source_kind,original,origin_provider,origin_reference,origin_updated_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [...identity, owner, version, request.objective, request.context, source.kind, source.bytes, source.origin?.provider ?? null, source.origin?.reference ?? null, source.origin?.updatedAt ?? null]);
+      if (operation.kind === 'create' && source.origin) {
+        const originInsert = await client.query(`INSERT INTO factory.github_origins
+          (organization_id,project_id,provider,reference,work_item_id,owner_id)
+          VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING reference`,
+          [scope.organizationId, scope.projectId, source.origin.provider, source.origin.reference, id, owner]);
+        if (originInsert.rowCount !== 1) {
+          await client.query('ROLLBACK TO SAVEPOINT github_origin_create');
+          const existing = await client.query<Row>(`SELECT r.* FROM factory.github_origins g
+            JOIN factory.intake_revisions r ON r.organization_id=g.organization_id AND r.project_id=g.project_id AND r.id=g.work_item_id
+            JOIN factory.intake_heads h ON h.organization_id=r.organization_id AND h.project_id=r.project_id AND h.id=r.id AND h.version=r.version
+            WHERE g.organization_id=$1 AND g.project_id=$2 AND g.provider=$3 AND g.reference=$4`,
+            [scope.organizationId, scope.projectId, source.origin.provider, source.origin.reference]);
+          if (!existing.rows[0]) fail('Canonical origin conflict could not be reconciled.');
+          const current = record(existing.rows[0]);
+          if (!source.origin.updatedAt || !current.originUpdatedAt || Date.parse(current.originUpdatedAt) >= Date.parse(source.origin.updatedAt)) {
+            await client.query('COMMIT'); return current;
+          }
+          fail('Canonical origin changed concurrently; retry reconciliation.');
+        }
+        await client.query('RELEASE SAVEPOINT github_origin_create');
+      }
       await client.query(`INSERT INTO factory.intake_receipts (organization_id,project_id,actor,operation,key,owner_id,digest,id,version)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [...key, owner, digest, id, version]);
       const result = await this.read(client, scope, id, version);
+      if (intent) {
+        await client.query(`INSERT INTO factory.refinement_intents
+          (organization_id,project_id,work_item_id,source_revision,origin_provider,origin_reference)
+          VALUES ($1,$2,$3,$4,$5,$6)
+          ON CONFLICT (organization_id,project_id,work_item_id,source_revision)
+          DO UPDATE SET updated_at=clock_timestamp(), status=CASE WHEN factory.refinement_intents.status IN ('failed','superseded') THEN 'pending' ELSE factory.refinement_intents.status END,
+            cancellation_requested=false, next_attempt_at=clock_timestamp()`,
+          [scope.organizationId, scope.projectId, id, intent.sourceRevision, intent.originProvider, intent.originReference]);
+      }
+      if (operation.kind === 'revise') {
+        await client.query(`UPDATE factory.refinement_intents
+          SET status='superseded', cancellation_requested=true, lease_token=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
+          WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND status IN ('pending','running')
+            AND substring(source_revision from 2)::integer < $4`, [scope.organizationId, scope.projectId, id, version]);
+      }
       await client.query('COMMIT'); return result;
     } catch (error) { await client.query('ROLLBACK'); throw error; }
     finally { client.release(); }
+  }
+
+  async ingest(scope: Scope, operation: IntakeOperation, source: IntakeSource): Promise<IntakeRecord> {
+    return this.ingestTransaction(scope, operation, source);
+  }
+
+  async ingestWithRefinementIntent(scope: Scope, operation: IntakeOperation, source: IntakeSource, intent: { sourceRevision: string; originProvider: string; originReference: string }): Promise<IntakeRecord> {
+    return this.ingestTransaction(scope, operation, source, intent);
   }
 }

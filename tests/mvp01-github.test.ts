@@ -37,15 +37,18 @@ test('MVP-01 GitHub issue intake binds installation, repository and authorized s
 test('MVP-01 repeats are idempotent and edits revise the existing canonical WorkItem', async () => {
   const calls: IntakeOperation[] = []; let stored: IntakeRecord | undefined;
   const store: WorkItemStore = {
-    async ingest(_scope, operation, source) { calls.push(operation); stored = { ...record(source), originUpdatedAt: operation.kind === 'revise' ? '2026-10-24T00:01:00.000Z' : '2026-10-24T00:00:00.000Z' }; return stored; },
+    async ingest(_scope, operation, source) { calls.push(operation); const version = operation.kind === 'create' ? 1 : Number(operation.expectedRevision.slice(1)) + 1; const content = JSON.parse(source.bytes.toString('utf8')) as { objective: string; context: string }; const base = record(source); const next: IntakeRecord = { ...base, workItem: { ...base.workItem, revision: `r${version}`, objective: content.objective, context: content.context }, version, ...(source.origin?.updatedAt ? { originUpdatedAt: new Date(source.origin.updatedAt).toISOString() } : {}) }; stored = next; return next; },
     async getByOrigin() { return stored; },
     async get() { if (!stored) throw new Error('missing'); return stored; }, async close() {},
   };
   const intake = new GitHubIssueIntake(store, trust);
   await intake.ingest(issue); await intake.ingest(issue);
   await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:01:00Z', body: 'Revised.' });
-  assert.deepEqual(calls.map((call) => call.kind), ['create', 'revise']);
+  await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:01:00Z', body: 'Same-second edit.' });
+  await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:01:00Z', body: 'Same-second edit.' });
+  assert.deepEqual(calls.map((call) => call.kind), ['create', 'revise', 'revise']);
   assert.equal(calls[1]?.kind === 'revise' ? calls[1].expectedRevision : '', 'r1');
+  assert.equal(calls[2]?.kind === 'revise' ? calls[2].expectedRevision : '', 'r2');
   assert.equal((await intake.ingest({ ...issue, action: 'edited', updatedAt: '2026-10-24T00:00:30Z', body: 'Out of order.' })).originUpdatedAt, '2026-10-24T00:01:00.000Z');
 });
 
@@ -119,6 +122,25 @@ test('MVP-01 native GitHub transport pins its origin and parses installation iss
     { method: 'GET', path: '/installation/repositories?per_page=100&page=1' },
     { method: 'GET', path: '/repos/owner/demo/issues?state=open&per_page=50&page=1' },
   ]);
+});
+
+test('MVP-01 GitHub polling replays a bounded overlap while committing the newest observed timestamp', async () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const responses = [
+    { status: 201, headers: {}, body: JSON.stringify({ token: 'ghs_APPID_JWT', expires_at: '2027-01-01T01:00:00Z', permissions: { issues: 'read', metadata: 'read' } }) },
+    { status: 200, headers: {}, body: JSON.stringify({ repositories: [{ id: 9, full_name: 'owner/demo' }] }) },
+    { status: 200, headers: {}, body: JSON.stringify([{ id: 11, number: 4, title: 'Synthetic', body: 'Edited.', repository_url: 'https://api.github.com/repos/owner/demo', updated_at: '2026-10-24T00:00:11Z', user: { id: 13, login: 'owner' } }]) },
+  ];
+  const paths: string[] = [];
+  const http = { async request(_method: 'GET' | 'POST', path: string) { paths.push(path); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
+  let saved: string | undefined;
+  const cursorStore = { async load() { return '2026-10-24T00:00:10.000Z'; }, async save(value: string) { saved = value; } };
+  const reader = new GitHubAppIssueReader(new GitHubAppInstallation({ appId: 1, installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, http), trust, cursorStore);
+  const events = await reader.listIssues(new AbortController().signal);
+  assert.equal(events.length, 1);
+  assert.match(paths[2]!, /since=2026-10-24T00%3A00%3A09\.000Z/);
+  await reader.commitCursor();
+  assert.equal(saved, '2026-10-24T00:00:11Z');
 });
 
 test('MVP-01 discovery uses a read-only token while comment publication obtains a separate full token', async () => {

@@ -90,6 +90,32 @@ test('MVP-01B acceptance mode refuses a trust configuration outside the testbed'
   assert.throws(() => validateTestbedIssueOneBatch([acceptanceIssue], trust));
 });
 
+test('MVP-01B unchanged accepted issue replay creates no second revision or refinement intent', async () => {
+  let stored: IntakeRecord | undefined; let durableWrites = 0; let cursorWrites = 0;
+  const store: WorkItemStore = {
+    async getByOrigin() { return stored; }, async get() { if (!stored) throw new Error('missing'); return stored; }, async close() {},
+    async ingest() { throw new Error('non-durable path used'); },
+    async ingestWithRefinementIntent() {
+      assert.equal(cursorWrites, 0);
+      durableWrites++;
+      const base = item();
+      stored = { ...base, workItem: { ...base.workItem, origin: { kind: 'external-ticket', provider: 'github', reference: `${acceptanceTrust.repositoryFullName}#1` } }, originUpdatedAt: acceptanceIssue.updatedAt };
+      return stored;
+    },
+  };
+  const reader = { async listIssues() { return [acceptanceIssue]; }, async commitCursor() { cursorWrites++; } };
+  const poller = new GitHubIssuePoller(reader, new GitHubIssueIntake(store, acceptanceTrust), true, (events) => validateTestbedIssueOneBatch(events, acceptanceTrust));
+  const workflows: WorkflowStore = { async create() { throw new Error('unexpected Run'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const plans = new RevisionBoundPlanService(workflows, { async refine() { throw new Error('unexpected model call'); } });
+  const coordinator = new GitHubMvpCoordinator({ organizationId: acceptanceTrust.organizationId, projectId: acceptanceTrust.projectId }, acceptanceTrust, poller, store, plans, workflows, { async load() { return undefined; }, async save() {} }, undefined, true);
+  const first = await coordinator.intake(new AbortController().signal);
+  const second = await coordinator.intake(new AbortController().signal);
+  assert.equal(first[0]?.workItem.id, second[0]?.workItem.id);
+  assert.equal(second[0]?.workItem.revision, 'r1');
+  assert.equal(durableWrites, 1);
+  assert.equal(cursorWrites, 2);
+});
+
 test('MVP-01B durable intake is safe when two workers race on the same canonical origin', async () => {
   let creates = 0; let stored: IntakeRecord | undefined;
   const store: WorkItemStore = {

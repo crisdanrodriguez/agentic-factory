@@ -11,10 +11,25 @@ const maxAttempts = 3;
 const responseSchema = z.object({ status: z.number().int(), headers: z.record(z.string(), z.string()), body: z.string() });
 export interface GitHubHttpTransport { request(method: 'GET' | 'POST', path: string, headers: Record<string, string>, body?: string, signal?: AbortSignal): Promise<z.infer<typeof responseSchema>>; }
 
+/** Allow percent encoding only for the canonical cursor on the bounded issues-list route. */
+export function validateGitHubApiPath(method: 'GET' | 'POST', path: string): void {
+  if (path.startsWith('//') || path.includes('..')) throw new Error('GitHub API path is not allowed.');
+  if (/^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\?/.test(path)) {
+    const match = method === 'GET' ? /^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\?state=open&per_page=50&page=(?:[1-9]|10)(?:&since=(\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}\.\d{3}Z))?$/.exec(path) : null;
+    if (!match) throw new Error('GitHub API path is not allowed.');
+    if (match[1]) {
+      const timestamp = match[1].replaceAll('%3A', ':');
+      if (!Number.isFinite(Date.parse(timestamp)) || new Date(timestamp).toISOString() !== timestamp) throw new Error('GitHub API path is not allowed.');
+    }
+    return;
+  }
+  if (!/^\/[A-Za-z0-9_./?=&-]+$/.test(path)) throw new Error('GitHub API path is not allowed.');
+}
+
 /** Native TLS transport with a fixed GitHub API origin and bounded responses. */
 export class NodeGitHubHttpsTransport implements GitHubHttpTransport {
   async request(method: 'GET' | 'POST', path: string, headers: Record<string, string>, body?: string, signal?: AbortSignal): Promise<z.infer<typeof responseSchema>> {
-    if (!/^\/[A-Za-z0-9_./?=&-]+$/.test(path) || path.includes('..')) throw new Error('GitHub API path is not allowed.');
+    validateGitHubApiPath(method, path);
     return new Promise((resolve, reject) => {
       const req = httpsRequest({ hostname: apiHost, port: 443, method, path, headers: { ...headers, host: apiHost, 'user-agent': 'agentic-factory-mvp01', accept: 'application/vnd.github+json', ...(body ? { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) } : {}) }, signal, timeout: 10_000 }, (res) => {
         const chunks: Buffer[] = []; let bytes = 0;

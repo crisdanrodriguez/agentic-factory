@@ -15,7 +15,7 @@ import { formatPlanComment } from '../src/core/github-comments.js';
 import { AuthorizedCodexPlanRefiner } from '../src/adapters/codex/plan-refiner.js';
 import { CodexCliPlanTransport } from '../src/adapters/codex/cli-transport.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { GitHubAppCommentWriter, GitHubAppInstallation, GitHubAppIssueReader, NodeGitHubHttpsTransport, parseInstallationRepositoryPage, parseInstallationTokenResponse, parseIssueListResponse } from '../src/adapters/github/rest.js';
+import { GitHubAppCommentWriter, GitHubAppInstallation, GitHubAppIssueReader, NodeGitHubHttpsTransport, parseInstallationRepositoryPage, parseInstallationTokenResponse, parseIssueListResponse, validateGitHubApiPath } from '../src/adapters/github/rest.js';
 import { GitHubMvpCoordinator, type MvpCheckpoint, type GitHubMvpCheckpointStore } from '../src/core/github-mvp.js';
 import type { GitHubIssuePolling, GitHubIssueReader } from '../src/ports/github-api.js';
 import { createRun, transition } from '../src/core/workflow.js';
@@ -110,7 +110,7 @@ test('MVP-01 native GitHub transport pins its origin and parses installation iss
     { status: 200, headers: {}, body: JSON.stringify([{ id: 11, number: 4, title: 'Synthetic', body: 'Record only.', repository_url: 'https://api.github.com/repos/owner/demo', updated_at: '2026-10-24T00:00:00Z', user: { id: 13, login: 'owner' }, repository: { id: 9, full_name: 'owner/demo' } }]) },
   ];
   const calls: { method: 'GET' | 'POST'; path: string; body?: string }[] = [];
-  const http = { async request(method: 'GET' | 'POST', path: string, _headers: Record<string, string>, body?: string) { calls.push(body === undefined ? { method, path } : { method, path, body }); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
+  const http = { async request(method: 'GET' | 'POST', path: string, _headers: Record<string, string>, body?: string) { validateGitHubApiPath(method, path); calls.push(body === undefined ? { method, path } : { method, path, body }); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
   let cursor: string | null = null; const cursorStore = { async load() { return cursor; }, async save(value: string) { cursor = value; } };
   const installation = new GitHubAppInstallation({ appId: 1, installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, http);
   const reader = new GitHubAppIssueReader(installation, trust, cursorStore);
@@ -132,15 +132,74 @@ test('MVP-01 GitHub polling replays a bounded overlap while committing the newes
     { status: 200, headers: {}, body: JSON.stringify([{ id: 11, number: 4, title: 'Synthetic', body: 'Edited.', repository_url: 'https://api.github.com/repos/owner/demo', updated_at: '2026-10-24T00:00:11Z', user: { id: 13, login: 'owner' } }]) },
   ];
   const paths: string[] = [];
-  const http = { async request(_method: 'GET' | 'POST', path: string) { paths.push(path); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
+  const http = { async request(method: 'GET' | 'POST', path: string) { validateGitHubApiPath(method, path); paths.push(path); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
   let saved: string | undefined;
   const cursorStore = { async load() { return '2026-10-24T00:00:10.000Z'; }, async save(value: string) { saved = value; } };
   const reader = new GitHubAppIssueReader(new GitHubAppInstallation({ appId: 1, installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, http), trust, cursorStore);
   const events = await reader.listIssues(new AbortController().signal);
   assert.equal(events.length, 1);
   assert.match(paths[2]!, /since=2026-10-24T00%3A00%3A09\.000Z/);
+  assert.doesNotMatch(paths[2]!, /%25/);
   await reader.commitCursor();
   assert.equal(saved, '2026-10-24T00:00:11Z');
+});
+
+test('MVP-01 cursor pagination keeps one canonical encoded since value on every page', async () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const issueResponse = (number: number) => ({ id: number, number, title: 'Synthetic issue', body: 'Record only.', repository_url: 'https://api.github.com/repos/owner/demo', updated_at: '2026-10-24T00:00:11Z', user: { id: 13, login: 'owner' } });
+  const responses = [
+    { status: 201, headers: {}, body: JSON.stringify({ token: 'read-token', expires_at: '2027-01-01T01:00:00Z', permissions: { issues: 'read', metadata: 'read' } }) },
+    { status: 200, headers: {}, body: JSON.stringify({ repositories: [{ id: 9, full_name: 'owner/demo' }] }) },
+    { status: 200, headers: {}, body: JSON.stringify(Array.from({ length: 50 }, (_, index) => issueResponse(index + 1))) },
+    { status: 200, headers: {}, body: JSON.stringify([issueResponse(51)]) },
+  ];
+  const paths: string[] = [];
+  const http = { async request(method: 'GET' | 'POST', path: string) { validateGitHubApiPath(method, path); paths.push(path); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
+  let saved: string | undefined;
+  const cursor = { async load() { return '2026-10-24T00:00:10.000Z'; }, async save(value: string) { saved = value; } };
+  const installation = new GitHubAppInstallation({ appId: 1, installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, http);
+  const reader = new GitHubAppIssueReader(installation, trust, cursor);
+  assert.equal((await reader.listIssues(new AbortController().signal)).length, 51);
+  assert.deepEqual(paths.slice(2), [
+    '/repos/owner/demo/issues?state=open&per_page=50&page=1&since=2026-10-24T00%3A00%3A09.000Z',
+    '/repos/owner/demo/issues?state=open&per_page=50&page=2&since=2026-10-24T00%3A00%3A09.000Z',
+  ]);
+  assert.equal(saved, undefined);
+  await reader.commitCursor();
+  assert.equal(saved, '2026-10-24T00:00:11Z');
+});
+
+test('MVP-01 transport accepts only the canonical encoded issues cursor route', () => {
+  const valid = '/repos/owner/demo/issues?state=open&per_page=50&page=1&since=2026-10-24T00%3A00%3A09.000Z';
+  assert.doesNotThrow(() => validateGitHubApiPath('GET', valid));
+  for (const path of [
+    valid.replace('%3A', '%3a'), valid.replace('%3A', '%253A'), valid.replace('%3A', '%2F'),
+    valid.replace('%3A', '%00'), valid.replace('%3A', '%'), valid.replace('2026-10-24', '2026-02-30'),
+    `${valid}&state=closed`, `${valid}&extra=1`, valid.replace('/issues?', '/issues%2F?'),
+    valid.replace('/owner/demo/', '/owner/%2E%2E/'), `https://api.github.com${valid}`,
+    `/${valid}`, '/repos/owner/demo/issues?state=open&per_page=50&page=1&extra=1',
+  ]) assert.throws(() => validateGitHubApiPath('GET', path), /path is not allowed/);
+  assert.throws(() => validateGitHubApiPath('POST', valid), /path is not allowed/);
+});
+
+test('MVP-01 transport rejection before issue delivery leaves intake and cursor untouched', async () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const responses = [
+    { status: 201, headers: {}, body: JSON.stringify({ token: 'read-token', expires_at: '2027-01-01T01:00:00Z', permissions: { issues: 'read', metadata: 'read' } }) },
+    { status: 200, headers: {}, body: JSON.stringify({ repositories: [{ id: 9, full_name: 'owner/demo' }] }) },
+  ];
+  const http = { async request(method: 'GET' | 'POST', path: string) { if (method === 'GET' && path.includes('/issues?')) throw new Error('GitHub API path is not allowed.'); const response = responses.shift(); if (!response) throw new Error('unexpected request'); return response; } };
+  let cursorWrites = 0; let intakeWrites = 0; let intakeReads = 0;
+  const cursor = { async load() { return '2026-10-24T00:00:10.000Z'; }, async save() { cursorWrites++; } };
+  const installation = new GitHubAppInstallation({ appId: 1, installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, http);
+  const reader = new GitHubAppIssueReader(installation, trust, cursor);
+  const store: WorkItemStore = { async getByOrigin() { intakeReads++; return undefined; }, async get() { throw new Error('unused'); }, async close() {}, async ingest() { intakeWrites++; throw new Error('unexpected intake'); } };
+  const poller = new GitHubIssuePoller(reader, new GitHubIssueIntake(store, trust), true);
+  const workflows: WorkflowStore = { async create() { throw new Error('unexpected Run'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const plans = new RevisionBoundPlanService(workflows, { async refine() { throw new Error('unexpected model call'); } });
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, store, plans, workflows, { async load() { return undefined; }, async save() {} }, undefined, true);
+  await assert.rejects(coordinator.intake(new AbortController().signal), /path is not allowed/);
+  assert.deepEqual({ cursorWrites, intakeWrites, intakeReads }, { cursorWrites: 0, intakeWrites: 0, intakeReads: 0 });
 });
 
 test('MVP-01 discovery uses a read-only token while comment publication obtains a separate full token', async () => {

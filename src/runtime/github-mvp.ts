@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { z } from 'zod';
 import { GitHubAppCommentReader, GitHubAppCommentWriter, GitHubAppInstallation, GitHubAppIssueReader } from '../adapters/github/rest.js';
 import { FileCommentReceiptStore, FileCursorStore } from '../adapters/github/local-state.js';
-import { GitHubIssueIntake } from '../core/github-intake.js';
+import { GitHubIssueIntake, validateTestbedIssueOneBatch } from '../core/github-intake.js';
 import { GitHubMvpCoordinator, WorkflowBackedMvpCheckpointStore } from '../core/github-mvp.js';
 import { RevisionBoundPlanService } from '../core/plan-approval.js';
 import { PostgresWorkItemStore } from '../adapters/postgres/work-item-store.js';
@@ -26,6 +26,7 @@ const configSchema = z.strictObject({
   allowCodexRefinement: z.boolean(),
   allowGitHubWrites: z.boolean(),
   allowOwnerApprovals: z.boolean(),
+  acceptanceMode: z.literal('testbed-issue-1').optional(),
 });
 export type GitHubMvpRuntimeConfig = z.infer<typeof configSchema>;
 
@@ -52,6 +53,7 @@ export type GitHubMvpDatabaseCapability = 'intake' | 'refinement' | 'workflow';
 
 export async function createGitHubMvpRuntime(config: GitHubMvpRuntimeConfig, capability: GitHubMvpDatabaseCapability = 'workflow') {
   if (config.scope.organizationId !== config.trust.organizationId || config.scope.projectId !== config.trust.projectId || config.github.repositoryId !== config.trust.repositoryId || config.github.repositoryFullName !== config.trust.repositoryFullName || config.github.installationId !== config.trust.installationId) throw new Error('GitHub MVP installation and trust configuration do not match.');
+  if (config.acceptanceMode && capability !== 'intake') throw new Error('Single-issue acceptance mode requires the intake capability.');
   const databaseEnvironment = capability === 'intake' ? config.intakeDatabaseUrlEnvironment : capability === 'refinement' ? config.refinementDatabaseUrlEnvironment : config.workflowDatabaseUrlEnvironment;
   const databaseUrl = process.env[databaseEnvironment]; if (!databaseUrl) throw new Error('GitHub MVP database configuration is unavailable.');
   const key = await privateKey(config.github.privateKeyPath);
@@ -63,7 +65,7 @@ export async function createGitHubMvpRuntime(config: GitHubMvpRuntimeConfig, cap
   const writer = new GitHubAppCommentWriter(installation, config.trust, receipts);
   const intents = new PostgresRefinementIntentStore(databaseUrl);
   const items = new PostgresWorkItemStore(databaseUrl); const workflows = new PostgresWorkflowStore(databaseUrl);
-  const intake = new GitHubIssueIntake(items, config.trust); const poller = new (await import('../adapters/github/issue-poller.js')).GitHubIssuePoller(reader, intake, true);
+  const intake = new GitHubIssueIntake(items, config.trust); const poller = new (await import('../adapters/github/issue-poller.js')).GitHubIssuePoller(reader, intake, true, config.acceptanceMode === 'testbed-issue-1' ? (events) => validateTestbedIssueOneBatch(events, config.trust) : undefined);
   const codexConfig = config.codex.codexHome ? { ...config.codex, codexHome: config.codex.codexHome } : { executable: config.codex.executable, workspace: config.codex.workspace, model: config.codex.model, timeoutMs: config.codex.timeoutMs, maxOutputBytes: config.codex.maxOutputBytes, maxCalls: config.codex.maxCalls, authorized: config.codex.authorized };
   const codexRefiner = new AuthorizedCodexPlanRefiner(new CodexCliPlanTransport(codexConfig), { authorized: config.codex.authorized, model: config.codex.model, maxCalls: config.codex.maxCalls, maxOutputBytes: config.codex.maxOutputBytes });
   const plans = new RevisionBoundPlanService(workflows, codexRefiner); const checkpoints = new WorkflowBackedMvpCheckpointStore(config.scope, workflows);

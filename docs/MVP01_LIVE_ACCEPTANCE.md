@@ -137,6 +137,28 @@ FACTORY_GITHUB_MVP_CONFIG=/private/operator/mvp01.json \
 node dist/cli/index.js github-mvp intake
 ```
 
+For the first single-issue MVP-01B acceptance pass, the owner-controlled
+`/private/operator/mvp01b-intake-once` launcher enables the optional
+`acceptanceMode: "testbed-issue-1"` only in its temporary run configuration.
+This mode requires the complete fetched batch to contain exactly issue #1 from
+`crisdanrodriguez/agentic-factory-testbed`, with the configured installation,
+repository ID, and authorized sender ID. It rejects an empty batch, an
+additional issue, or any identity mismatch before WorkItem, receipt, origin,
+intent, or cursor writes. It does not filter issues or advance the cursor on a
+rejected batch. Normal intake has no issue-number restriction.
+
+Before a separately authorized live pass, review the source commit and private
+launcher pin, confirm the isolated database baseline and absent cursor, and
+verify that only intake is temporarily enabled. Then execute the launcher once:
+
+```sh
+/private/operator/mvp01b-intake-once --owner-authorized
+```
+
+Inspect the exit status, durable records, and cursor after that one pass; stop
+regardless of the outcome. Repeat polling, refinement, and GitHub writes need
+their own authorization.
+
 Only after intake evidence is reviewed may the owner separately enable
 `allowCodexRefinement` and `codex.authorized`, then run:
 

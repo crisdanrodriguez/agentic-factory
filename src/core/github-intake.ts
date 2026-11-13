@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { validIdentifier, type IntakeOperation, type IntakeRecord, type IntakeSource } from './intake.js';
 import type { Scope } from './workflow.js';
 import type { WorkItemStore } from '../ports/work-item-store.js';
-import type { GitHubIssueSource } from '../ports/github.js';
+import type { GitHubIssueEvent, GitHubIssueSource, GitHubTrust } from '../ports/github.js';
 
 const issueSchema = z.strictObject({
   installationId: z.number().int().positive(), repositoryId: z.number().int().positive(),
@@ -28,6 +28,16 @@ export function authorizeIssue(input: GitHubIssueSource): Scope {
   if (issue.installationId !== trust.installationId || issue.repositoryId !== trust.repositoryId || issue.repositoryFullName !== trust.repositoryFullName || issue.senderId !== trust.authorizedSenderId) reject();
   const [organizationId, projectId] = [validIdentifier(trust.organizationId), validIdentifier(trust.projectId)];
   return { organizationId, projectId };
+}
+
+/** Fail closed on the complete fetched batch for the owner-authorized testbed acceptance pass. */
+export function validateTestbedIssueOneBatch(events: readonly GitHubIssueEvent[], trust: GitHubTrust): void {
+  if (trust.repositoryFullName !== 'crisdanrodriguez/agentic-factory-testbed' || events.length !== 1) {
+    throw new GitHubIntakeError('Testbed issue #1 acceptance batch is not exactly one issue.');
+  }
+  const issue = parseIssue(events[0]);
+  if (issue.issueNumber !== 1) throw new GitHubIntakeError('Testbed issue #1 is missing from the acceptance batch.');
+  authorizeIssue({ issue, trust });
 }
 
 export class GitHubIssueIntake {

@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GitHubIssueIntake } from '../src/core/github-intake.js';
+import { GitHubIssueIntake, validateTestbedIssueOneBatch } from '../src/core/github-intake.js';
 import { GitHubIssuePoller } from '../src/adapters/github/issue-poller.js';
+import { GitHubMvpCoordinator } from '../src/core/github-mvp.js';
 import { GitHubRefinementWorker } from '../src/runtime/github-refinement-worker.js';
 import { RevisionBoundPlanService } from '../src/core/plan-approval.js';
 import type { IntakeRecord } from '../src/core/intake.js';
 import type { WorkItem } from '../src/core/contracts.js';
 import type { WorkItemStore } from '../src/ports/work-item-store.js';
+import type { GitHubIssueEvent } from '../src/ports/github.js';
 import type { RefinementClaim, RefinementIntentStore } from '../src/ports/refinement-intent.js';
 import type { WorkflowStore } from '../src/ports/workflow-store.js';
 import type { ProjectConfiguration } from '../src/core/configuration.js';
@@ -37,6 +39,55 @@ test('MVP-01B intake cursor advances after durable intake without invoking refin
   assert.equal(result.accepted.length, 1); assert.equal(committed, 0); assert.equal(refined, 0);
   await poller.commitCursor(); assert.equal(committed, 1);
   void refined;
+});
+
+const acceptanceTrust = { ...trust, repositoryFullName: 'crisdanrodriguez/agentic-factory-testbed' };
+const acceptanceIssue: GitHubIssueEvent = { ...issue, repositoryFullName: acceptanceTrust.repositoryFullName, issueNumber: 1 };
+
+function acceptancePoller(batch: readonly GitHubIssueEvent[]) {
+  const calls = { reads: 0, writes: 0, cursors: 0 };
+  const store: WorkItemStore = {
+    async getByOrigin() { calls.reads++; return undefined; },
+    async get() { throw new Error('unused'); }, async close() {},
+    async ingest() { throw new Error('non-durable path used'); },
+    async ingestWithRefinementIntent() { assert.equal(calls.cursors, 0); calls.writes++; return item(); },
+  };
+  const poller = new GitHubIssuePoller({ async listIssues() { return batch; }, async commitCursor() { calls.cursors++; } }, new GitHubIssueIntake(store, acceptanceTrust), true, (events) => validateTestbedIssueOneBatch(events, acceptanceTrust));
+  const workflows: WorkflowStore = { async create() { throw new Error('workflow creation forbidden'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const plans = new RevisionBoundPlanService(workflows, { async refine() { throw new Error('model invocation forbidden'); } });
+  const coordinator = new GitHubMvpCoordinator({ organizationId: acceptanceTrust.organizationId, projectId: acceptanceTrust.projectId }, acceptanceTrust, poller, store, plans, workflows, { async load() { throw new Error('unused'); }, async save() { throw new Error('unused'); } }, undefined, true);
+  return { calls, coordinator };
+}
+
+test('MVP-01B acceptance mode persists only testbed issue #1 and acknowledges after durable intake', async () => {
+  const { calls, coordinator } = acceptancePoller([acceptanceIssue]);
+  const result = await coordinator.intake(new AbortController().signal);
+  assert.equal(result.length, 1);
+  assert.deepEqual(calls, { reads: 1, writes: 1, cursors: 1 });
+});
+
+test('MVP-01B acceptance mode rejects incomplete or unexpected batches before any read, write, or cursor update', async (t) => {
+  const rejectedBatches: Record<string, readonly GitHubIssueEvent[]> = {
+    'empty batch': [],
+    'additional issue': [acceptanceIssue, { ...acceptanceIssue, issueId: 12, issueNumber: 2 }],
+    'duplicate issue': [acceptanceIssue, acceptanceIssue],
+    'expected issue missing': [{ ...acceptanceIssue, issueNumber: 2 }],
+    'incorrect sender': [{ ...acceptanceIssue, senderId: 99 }],
+    'repository ID mismatch': [{ ...acceptanceIssue, repositoryId: 10 }],
+    'repository name mismatch': [{ ...acceptanceIssue, repositoryFullName: 'owner/other' }],
+    'installation ID mismatch': [{ ...acceptanceIssue, installationId: 8 }],
+  };
+  for (const [name, batch] of Object.entries(rejectedBatches)) {
+    await t.test(name, async () => {
+      const { calls, coordinator } = acceptancePoller(batch);
+      await assert.rejects(coordinator.intake(new AbortController().signal));
+      assert.deepEqual(calls, { reads: 0, writes: 0, cursors: 0 });
+    });
+  }
+});
+
+test('MVP-01B acceptance mode refuses a trust configuration outside the testbed', () => {
+  assert.throws(() => validateTestbedIssueOneBatch([acceptanceIssue], trust));
 });
 
 test('MVP-01B durable intake is safe when two workers race on the same canonical origin', async () => {

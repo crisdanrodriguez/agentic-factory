@@ -49,7 +49,7 @@ test('review regression: CI provisions PostgreSQL and runs every mandatory check
   const databaseTests = readFileSync('tests/database/mvp01b.test.ts', 'utf8');
   assert.match(databaseTests, /process\.env\.CI === 'true'[\s\S]*Required MVP-01B PostgreSQL credentials are missing in CI/);
   assert.match(databaseTests, /SHOW server_version[\s\S]*18\\\.6/);
-  assert.equal([...databaseTests.matchAll(/\{ skip:/g)].length, 3, 'The three database tests may skip only through their declared missing-URL gates');
+  assert.equal([...databaseTests.matchAll(/\{ skip:/g)].length, 4, 'The four database tests may skip only through their declared missing-URL gates');
   assert.doesNotMatch(databaseTests, /test\.only|context\.skip\(/);
 });
 

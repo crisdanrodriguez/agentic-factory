@@ -124,3 +124,39 @@ test('MVP-01B PostgreSQL lease replacement, late fencing, supersession, and canc
     assert.equal(terminal.rows[0]!.status, 'cancelled'); assert.equal(terminal.rows[0]!.lease_token, null);
   } finally { await Promise.all([store.close(), intents.close()]); }
 });
+
+test('MVP-01B PostgreSQL exhausts an expired final lease and claims other due work', { skip: !databaseUrl || !refinerUrl }, async () => {
+  const store = new PostgresWorkItemStore(databaseUrl!);
+  const intents = new PostgresRefinementIntentStore(refinerUrl!);
+  const suffix = Math.floor(Math.random() * 1000000);
+  const create = (reference: string, key: string) => store.ingestWithRefinementIntent!(scope,
+    { kind: 'create', key: `mvp01b-exhaustion-${suffix}-${key}` },
+    { kind: 'github', bytes: Buffer.from(JSON.stringify({ objective: 'Synthetic lease exhaustion', context: 'No execution.' })), origin: { provider: 'github', reference, updatedAt: '2026-10-24T00:00:00Z' } },
+    { sourceRevision: 'r1', originProvider: 'github', originReference: reference });
+  try {
+    const exhausted = await create(`owner/exhausted#${suffix}`, 'exhausted');
+    let finalClaim;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const claim = await intents.claimDue(scope, `worker-${attempt}`, 30);
+      assert.ok(claim);
+      assert.equal(claim?.workItemId, exhausted.workItem.id);
+      assert.equal(claim.attemptCount, attempt);
+      finalClaim = claim;
+      await intents.pool.query(`UPDATE factory.refinement_intents SET lease_expires_at=clock_timestamp()-interval '1 second'
+        WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision='r1'`,
+      [scope.organizationId, scope.projectId, exhausted.workItem.id]);
+    }
+    const eligible = await create(`owner/eligible#${suffix}`, 'eligible');
+    const next = await intents.claimDue(scope, 'replacement-worker', 30);
+    assert.ok(next);
+    assert.equal(next?.workItemId, eligible.workItem.id);
+    assert.equal(next.attemptCount, 1);
+    const row = await intents.pool.query<{ status: string; attempt_count: number; lease_token: string | null; lease_expires_at: Date | null; last_error: string | null }>(`SELECT status,attempt_count,lease_token,lease_expires_at,last_error
+      FROM factory.refinement_intents WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision='r1'`,
+    [scope.organizationId, scope.projectId, exhausted.workItem.id]);
+    assert.deepEqual(row.rows[0], { status: 'failed', attempt_count: 3, lease_token: null, lease_expires_at: null, last_error: 'REFINEMENT_ATTEMPTS_EXHAUSTED' });
+    await assert.rejects(intents.transaction((client) => intents.complete(client, finalClaim!, 'late-exhausted-run')), /stale|cancelled/i);
+    await assert.rejects(intents.retry(finalClaim!, 'SYNTHETIC_FAILURE', 60), /Stale refinement claim/i);
+    await intents.cancel(scope, eligible.workItem.id, 'r1');
+  } finally { await Promise.all([store.close(), intents.close()]); }
+});

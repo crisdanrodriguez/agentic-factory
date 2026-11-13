@@ -35,8 +35,19 @@ export class PostgresRefinementIntentStore implements RefinementIntentStore {
   async claimDue(scope: Scope, workerId: string, leaseSeconds: number): Promise<RefinementClaim | undefined> {
     if (!Number.isInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 300) throw new Error('Invalid refinement lease.');
     return this.transaction(async (client) => {
+      await client.query(`WITH exhausted AS (
+          SELECT organization_id,project_id,work_item_id,source_revision FROM factory.refinement_intents
+          WHERE organization_id=$1 AND project_id=$2 AND status='running' AND cancellation_requested=false
+            AND attempt_count >= max_attempts AND lease_expires_at < clock_timestamp()
+          ORDER BY lease_expires_at LIMIT 64 FOR UPDATE SKIP LOCKED
+        ) UPDATE factory.refinement_intents AS intent
+        SET status='failed', lease_token=NULL, lease_expires_at=NULL,
+          last_error='REFINEMENT_ATTEMPTS_EXHAUSTED', updated_at=clock_timestamp()
+        FROM exhausted WHERE intent.organization_id=exhausted.organization_id
+          AND intent.project_id=exhausted.project_id AND intent.work_item_id=exhausted.work_item_id
+          AND intent.source_revision=exhausted.source_revision`, [scope.organizationId, scope.projectId]);
       const result = await client.query<Row>(`SELECT * FROM factory.refinement_intents
-        WHERE organization_id=$1 AND project_id=$2 AND cancellation_requested=false
+        WHERE organization_id=$1 AND project_id=$2 AND cancellation_requested=false AND attempt_count < max_attempts
           AND ((status='pending' AND next_attempt_at <= clock_timestamp())
             OR (status='running' AND lease_expires_at < clock_timestamp()))
         ORDER BY next_attempt_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`, [scope.organizationId, scope.projectId]);

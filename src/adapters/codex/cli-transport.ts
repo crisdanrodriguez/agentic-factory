@@ -34,7 +34,48 @@ export function codexRefinementArgs(outputPath: string, schemaPath: string, mode
 }
 
 export function codexRefinementOutputSchema(): Record<string, unknown> {
-  return z.toJSONSchema(configurationSchema);
+  const schema = z.toJSONSchema(configurationSchema) as Record<string, unknown>;
+  delete schema.$schema;
+  const restrict = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(restrict); return; }
+    const entry = node as Record<string, unknown>;
+    if (Array.isArray(entry.oneOf)) { entry.anyOf = entry.oneOf; delete entry.oneOf; }
+    if (entry.type === 'object' && entry.properties && typeof entry.properties === 'object') {
+      const properties = entry.properties as Record<string, unknown>;
+      const required = new Set(Array.isArray(entry.required) ? entry.required : []);
+      for (const key of Object.keys(properties)) {
+        restrict(properties[key]);
+        if (!required.has(key)) properties[key] = { anyOf: [properties[key], { type: 'null' }] };
+      }
+      entry.required = Object.keys(properties);
+    }
+    for (const [key, value] of Object.entries(entry)) {
+      if (key !== 'properties') restrict(value);
+    }
+  };
+  restrict(schema);
+  return schema;
+}
+
+export function normalizeCodexConfigurationOutput(input: unknown): unknown {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const output = { ...input } as Record<string, unknown>;
+  if (output.plan && typeof output.plan === 'object' && !Array.isArray(output.plan)) {
+    const plan = { ...output.plan } as Record<string, unknown>;
+    if (plan.research === null) delete plan.research;
+    output.plan = plan;
+  }
+  if (output.workItem && typeof output.workItem === 'object' && !Array.isArray(output.workItem)) {
+    const workItem = { ...output.workItem } as Record<string, unknown>;
+    if (workItem.origin && typeof workItem.origin === 'object' && !Array.isArray(workItem.origin)) {
+      const origin = { ...workItem.origin } as Record<string, unknown>;
+      if (origin.kind === 'local' && origin.reference === null) delete origin.reference;
+      workItem.origin = origin;
+    }
+    output.workItem = workItem;
+  }
+  return output;
 }
 
 export function codexRefinementPrompt(request: CodexPlanRequest): string {
@@ -121,7 +162,7 @@ export class CodexCliPlanTransport implements CodexPlanTransport {
       const exit = await new Promise<number>((resolve, reject) => { const timer = setTimeout(() => { stop(); reject(new Error('Codex CLI refinement timed out.')); }, this.config.timeoutMs); child.once('error', reject); child.once('exit', (code, sig) => { childExited = true; clearTimeout(timer); if (sig) reject(new Error('Codex CLI refinement was interrupted.')); else resolve(code ?? 1); }); });
       if (exit !== 0) throw new Error('Codex CLI refinement failed.');
       const output = await readFile(outputPath); if (output.length > this.config.maxOutputBytes) throw new Error('Codex CLI output exceeds the allowed bound.');
-      try { return JSON.parse(output.toString('utf8')) as unknown; } catch { throw new Error('Codex CLI returned invalid JSON.'); }
+      try { return normalizeCodexConfigurationOutput(JSON.parse(output.toString('utf8')) as unknown); } catch { throw new Error('Codex CLI returned invalid JSON.'); }
     } finally {
       signal.removeEventListener('abort', abort); try { child.stdin.destroy(); } catch {} await rm(directory, { recursive: true, force: false }).catch(() => { throw new Error('Codex CLI temporary cleanup could not be verified.'); });
     }

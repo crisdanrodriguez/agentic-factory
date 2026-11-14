@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CodexCliPlanTransport, codexRefinementOutputSchema } from '../src/adapters/codex/cli-transport.js';
+import { CodexCliPlanTransport, codexRefinementOutputSchema, normalizeCodexConfigurationOutput } from '../src/adapters/codex/cli-transport.js';
 import { BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from '../src/core/policy.js';
 import { validateConfiguration, type ProjectConfiguration } from '../src/core/configuration.js';
 
@@ -14,6 +14,22 @@ test('Codex refinement output schema derives from the trusted configuration cont
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(schema.required, ['schemaVersion', 'fixture', 'workItem', 'profile', 'plan', 'policy']);
   assert.equal((schema.properties as Record<string, Record<string, unknown>>).plan?.additionalProperties, false);
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    const record = node as Record<string, unknown>;
+    assert.equal('oneOf' in record, false);
+    if (record.type === 'object' && record.properties && typeof record.properties === 'object') {
+      assert.deepEqual(record.required, Object.keys(record.properties));
+      assert.equal(record.additionalProperties, false);
+    }
+    Object.values(record).forEach(visit);
+  };
+  visit(schema);
+  const modelOutput = structuredClone(fixture) as unknown as { plan: Record<string, unknown>; workItem: { origin: Record<string, unknown> } };
+  modelOutput.plan.research = null;
+  modelOutput.workItem.origin = { kind: 'local', reference: null };
+  assert.deepEqual(validateConfiguration(normalizeCodexConfigurationOutput(modelOutput), BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG), fixture);
 });
 
 test('Codex refinement delivers trusted policy, schema, and prompt on stdin to a disposable CLI fixture', async () => {

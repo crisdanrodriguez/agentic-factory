@@ -9,11 +9,13 @@ import type { PlanRefiner } from '../src/ports/plan-refiner.js';
 import { RevisionBoundPlanService } from '../src/core/plan-approval.js';
 import type { ProjectConfiguration } from '../src/core/configuration.js';
 import type { Run, Scope } from '../src/core/workflow.js';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GitHubIssuePoller } from '../src/adapters/github/issue-poller.js';
 import { formatPlanComment } from '../src/core/github-comments.js';
 import { AuthorizedCodexPlanRefiner } from '../src/adapters/codex/plan-refiner.js';
-import { CodexCliPlanTransport } from '../src/adapters/codex/cli-transport.js';
+import { CodexCliPlanTransport, DISABLED_CODEX_TOOLS, codexRefinementArgs, verifyDisabledCodexTools } from '../src/adapters/codex/cli-transport.js';
 import { generateKeyPairSync } from 'node:crypto';
 import { GitHubAppCommentWriter, GitHubAppInstallation, GitHubAppIssueReader, NodeGitHubHttpsTransport, parseInstallationRepositoryPage, parseInstallationTokenResponse, parseIssueListResponse, validateGitHubApiPath } from '../src/adapters/github/rest.js';
 import { GitHubMvpCoordinator, type MvpCheckpoint, type GitHubMvpCheckpointStore } from '../src/core/github-mvp.js';
@@ -99,6 +101,42 @@ test('MVP-01 Codex refinement requires explicit authorization and a bounded call
 test('MVP-01 Codex CLI transport is disabled without explicit local authorization', async () => {
   const transport = new CodexCliPlanTransport({ executable: '/does/not/run', workspace: '/private/tmp', model: 'codex-local', timeoutMs: 1000, maxOutputBytes: 1000, authorized: false });
   await assert.rejects(transport.refine({ workItem: record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }).workItem, sourceRevision: 'r1', model: 'codex-local', maxOutputBytes: 1000 }, new AbortController().signal), /not locally authorized/);
+});
+
+test('MVP-01 Codex CLI refinement pins a dedicated read-only, tool-free session', () => {
+  const args = codexRefinementArgs('/private/tmp/last-message.json', 'gpt-6-sol');
+  assert.deepEqual(args.slice(0, 6), ['exec', '--ephemeral', '--ignore-user-config', '--strict-config', '--sandbox', 'read-only']);
+  assert.deepEqual(args.slice(-4), ['--output-last-message', '/private/tmp/last-message.json', '--model', 'gpt-6-sol']);
+  for (const name of DISABLED_CODEX_TOOLS) {
+    assert.ok(args.some((value, index) => value === '--disable' && args[index + 1] === name), `${name} must be disabled`);
+  }
+  const verified = DISABLED_CODEX_TOOLS.map((name) => `${name} ${name === 'standalone_web_search' ? 'under development' : 'stable'} false`).join('\n');
+  assert.doesNotThrow(() => verifyDisabledCodexTools(verified));
+  assert.throws(() => verifyDisabledCodexTools(verified.replace('shell_tool stable false', 'shell_tool stable true')), /restriction/);
+  assert.throws(() => verifyDisabledCodexTools(verified.replace('apps stable false', '')), /restriction/);
+});
+
+test('MVP-01 Codex CLI rejects an unreviewed binary before model invocation and uses dedicated home', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'af-codex-preflight-'));
+  const executable = join(directory, 'codex-fixture');
+  const marker = join(directory, 'identity');
+  writeFileSync(executable, `#!/bin/sh\nprintf '%s' "$CODEX_HOME" > '${marker}'\nif [ "$1" = '--version' ]; then echo 'codex-cli 0.168.0'; exit 0; fi\necho 'unexpected exec' >> '${marker}'\nexit 1\n`);
+  chmodSync(executable, 0o700);
+  try {
+    const transport = new CodexCliPlanTransport({ executable, workspace: directory, model: 'gpt-6-sol', timeoutMs: 1000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
+    await assert.rejects(transport.refine({ workItem: record({ kind: 'cli', bytes: Buffer.from('{}') }).workItem, sourceRevision: 'r1', model: 'gpt-6-sol', maxOutputBytes: 1000 }, new AbortController().signal), /version is not reviewed/);
+    assert.equal(readFileSync(marker, 'utf8'), join(directory, 'dedicated-home'));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('MVP-01 invalid Codex configuration cannot create a Run', async () => {
+  const workItem = record({ kind: 'cli', bytes: Buffer.from('{}') }).workItem;
+  let creates = 0;
+  const workflows: WorkflowStore = { async create() { creates++; throw new Error('Run must not be created'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const refiner = new AuthorizedCodexPlanRefiner({ async refine() { return { invalid: true }; } }, { authorized: true, model: 'gpt-6-sol', maxCalls: 1, maxOutputBytes: 1000 });
+  const service = new RevisionBoundPlanService(workflows, refiner);
+  await assert.rejects(service.refine({ organizationId: 'org-1', projectId: 'demo' }, workItem, 'r1'));
+  assert.equal(creates, 0);
 });
 
 test('MVP-01 native GitHub transport pins its origin and parses installation issue identity without network access', async () => {

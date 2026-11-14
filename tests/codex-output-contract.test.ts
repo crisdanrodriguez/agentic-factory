@@ -18,7 +18,9 @@ test('Codex refinement output schema derives from the trusted configuration cont
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) { node.forEach(visit); return; }
     const record = node as Record<string, unknown>;
-    assert.equal('oneOf' in record, false);
+    for (const keyword of ['oneOf', 'allOf', 'not', 'if', 'then', 'else', 'dependentRequired', 'dependentSchemas']) {
+      assert.equal(keyword in record, false, `${keyword} is outside the reviewed Structured Outputs subset`);
+    }
     if (record.type === 'object' && record.properties && typeof record.properties === 'object') {
       assert.deepEqual(record.required, Object.keys(record.properties));
       assert.equal(record.additionalProperties, false);
@@ -26,10 +28,16 @@ test('Codex refinement output schema derives from the trusted configuration cont
     Object.values(record).forEach(visit);
   };
   visit(schema);
-  const modelOutput = structuredClone(fixture) as unknown as { plan: Record<string, unknown>; workItem: { origin: Record<string, unknown> } };
+  const modelOutput = structuredClone(fixture) as unknown as { plan: Record<string, unknown>; workItem: { origin: Record<string, unknown> }; profile: Record<string, unknown> };
   modelOutput.plan.research = null;
   modelOutput.workItem.origin = { kind: 'local', reference: null };
   assert.deepEqual(validateConfiguration(normalizeCodexConfigurationOutput(modelOutput), BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG), fixture);
+  const invalidResearch = structuredClone(modelOutput);
+  invalidResearch.profile = { ...fixture.profile, id: 'ml-research' };
+  assert.throws(() => validateConfiguration(normalizeCodexConfigurationOutput(invalidResearch), BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG));
+  const invalidOrigin = structuredClone(modelOutput);
+  invalidOrigin.workItem.origin = { kind: 'external-ticket', provider: 'github', reference: null };
+  assert.throws(() => validateConfiguration(normalizeCodexConfigurationOutput(invalidOrigin), BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG), /Invalid configuration structure/);
 });
 
 test('Codex refinement delivers trusted policy, schema, and prompt on stdin to a disposable CLI fixture', async () => {

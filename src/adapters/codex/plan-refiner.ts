@@ -3,7 +3,7 @@ import { BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from '../../core/policy.
 import type { WorkItem } from '../../core/contracts.js';
 import type { PlanRefiner } from '../../ports/plan-refiner.js';
 
-export interface CodexPlanRequest { workItem: WorkItem; sourceRevision: string; model: string; maxOutputBytes: number }
+export interface CodexPlanRequest { workItem: WorkItem; sourceRevision: string; sourceSnapshot?: string; model: string; maxOutputBytes: number }
 export interface CodexPlanTransport { refine(request: CodexPlanRequest, signal: AbortSignal): Promise<unknown> }
 
 /**
@@ -13,7 +13,7 @@ export interface CodexPlanTransport { refine(request: CodexPlanRequest, signal: 
 export class AuthorizedCodexPlanRefiner implements PlanRefiner {
   private calls = 0;
   constructor(private readonly transport: CodexPlanTransport, private readonly config: { authorized: boolean; model: string; maxCalls: number; maxOutputBytes: number }) {}
-  async refine(input: { workItem: WorkItem; sourceRevision: string }, signal: AbortSignal = new AbortController().signal): Promise<ProjectConfiguration> {
+  async refine(input: { workItem: WorkItem; sourceRevision: string; sourceSnapshot?: string }, signal: AbortSignal = new AbortController().signal): Promise<ProjectConfiguration> {
     if (!this.config.authorized) throw new Error('Codex plan refinement is not locally authorized.');
     if (this.calls >= this.config.maxCalls) throw new Error('Codex plan refinement budget exhausted.');
     if (input.sourceRevision !== input.workItem.revision) throw new Error('Codex refinement revision mismatch.');

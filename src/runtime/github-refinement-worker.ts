@@ -40,7 +40,7 @@ export class GitHubRefinementWorker {
         else throw new Error('Existing refinement result requires reconciliation support.');
         return true;
       }
-      const plan = await this.plans.refine(this.scope, current.workItem, claim.sourceRevision, signal);
+      const plan = await this.plans.refine(this.scope, current.workItem, claim.sourceRevision, signal, current.digest);
       if (signal.aborted) { await this.intents.cancel(this.scope, claim.workItemId, claim.sourceRevision); return true; }
       // PostgreSQL composition persists the workflow and intent completion together;
       // injected fakes may use the two operations separately for deterministic tests.

@@ -1,7 +1,7 @@
-import { mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, open, readdir, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { configurationSchema } from '../../core/configuration.js';
 import { BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from '../../core/policy.js';
@@ -42,9 +42,24 @@ function cliExitFailure(stderr: string, truncated: boolean): RefinementDiagnosti
 }
 export function codexRefinementArgs(outputPath: string, schemaPath: string, model: string): string[] {
   return ['exec', '--ephemeral', '--ignore-user-config', '--strict-config',
-    '--sandbox', 'read-only', ...disabledToolArgs(), '--output-schema', schemaPath,
+    '--sandbox', 'read-only', ...disabledToolArgs(), '--skip-git-repo-check', '--output-schema', schemaPath,
     '--output-last-message', outputPath,
-    '--model', model];
+    '--model', model, '-'];
+}
+
+/** The Git check may be skipped only for an empty workspace inside an owner-private directory. */
+async function verifyPrivateEmptyWorkspace(workspace: string): Promise<void> {
+  try {
+    if (!isAbsolute(workspace) || resolve(workspace) !== workspace) throw new Error('Noncanonical workspace');
+    const [directory, parent, entries] = await Promise.all([
+      lstat(workspace), lstat(dirname(workspace)), readdir(workspace),
+    ]);
+    const uid = process.getuid?.();
+    if (uid === undefined || !directory.isDirectory() || !parent.isDirectory() ||
+        directory.uid !== uid || parent.uid !== uid ||
+        (directory.mode & 0o777) !== 0o700 || (parent.mode & 0o777) !== 0o700 ||
+        entries.length !== 0) throw new Error('Unsafe workspace');
+  } catch { throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false); }
 }
 
 export function codexRefinementOutputSchema(): Record<string, unknown> {
@@ -156,6 +171,7 @@ export class CodexCliPlanTransport implements CodexPlanTransport {
   async refine(request: CodexPlanRequest, signal: AbortSignal): Promise<unknown> {
     if (!this.config.authorized) throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false);
     if (!this.config.executable || !this.config.workspace || !Number.isSafeInteger(this.config.timeoutMs) || this.config.timeoutMs < 1000 || this.config.timeoutMs > 240_000 || !Number.isSafeInteger(this.config.maxOutputBytes) || this.config.maxOutputBytes < 1 || this.config.maxOutputBytes > 1_000_000) throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false);
+    await verifyPrivateEmptyWorkspace(this.config.workspace);
     const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, ...(this.config.codexHome ? { CODEX_HOME: this.config.codexHome } : {}) };
     if (!this.config.codexHome) throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false);
     let version: string;

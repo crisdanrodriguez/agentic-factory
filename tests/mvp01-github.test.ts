@@ -9,7 +9,7 @@ import type { PlanRefiner } from '../src/ports/plan-refiner.js';
 import { RevisionBoundPlanService } from '../src/core/plan-approval.js';
 import type { ProjectConfiguration } from '../src/core/configuration.js';
 import type { Run, Scope } from '../src/core/workflow.js';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GitHubIssuePoller } from '../src/adapters/github/issue-poller.js';
@@ -106,7 +106,8 @@ test('MVP-01 Codex CLI transport is disabled without explicit local authorizatio
 test('MVP-01 Codex CLI refinement pins a dedicated read-only, tool-free session', () => {
   const args = codexRefinementArgs('/private/tmp/last-message.json', '/private/tmp/output-schema.json', 'gpt-6-sol');
   assert.deepEqual(args.slice(0, 6), ['exec', '--ephemeral', '--ignore-user-config', '--strict-config', '--sandbox', 'read-only']);
-  assert.deepEqual(args.slice(-6), ['--output-schema', '/private/tmp/output-schema.json', '--output-last-message', '/private/tmp/last-message.json', '--model', 'gpt-6-sol']);
+  assert.deepEqual(args.slice(-7), ['--output-schema', '/private/tmp/output-schema.json', '--output-last-message', '/private/tmp/last-message.json', '--model', 'gpt-6-sol', '-']);
+  assert.equal(args.filter((arg) => arg === '--skip-git-repo-check').length, 1);
   for (const name of DISABLED_CODEX_TOOLS) {
     assert.ok(args.some((value, index) => value === '--disable' && args[index + 1] === name), `${name} must be disabled`);
   }
@@ -118,12 +119,14 @@ test('MVP-01 Codex CLI refinement pins a dedicated read-only, tool-free session'
 
 test('MVP-01 Codex CLI rejects an unreviewed binary before model invocation and uses dedicated home', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'af-codex-preflight-'));
+  const workspace = join(directory, 'workspace');
+  mkdirSync(workspace, { mode: 0o700 });
   const executable = join(directory, 'codex-fixture');
   const marker = join(directory, 'identity');
   writeFileSync(executable, `#!/bin/sh\nprintf '%s' "$CODEX_HOME" > '${marker}'\nif [ "$1" = '--version' ]; then echo 'codex-cli 0.168.0'; exit 0; fi\necho 'unexpected exec' >> '${marker}'\nexit 1\n`);
   chmodSync(executable, 0o700);
   try {
-    const transport = new CodexCliPlanTransport({ executable, workspace: directory, model: 'gpt-6-sol', timeoutMs: 1000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
+    const transport = new CodexCliPlanTransport({ executable, workspace, model: 'gpt-6-sol', timeoutMs: 1000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
     await assert.rejects(transport.refine({ workItem: record({ kind: 'cli', bytes: Buffer.from('{}') }).workItem, sourceRevision: 'r1', model: 'gpt-6-sol', maxOutputBytes: 1000 }, new AbortController().signal), /REFINEMENT_CLI_UNREVIEWED/);
     assert.equal(readFileSync(marker, 'utf8'), join(directory, 'dedicated-home'));
   } finally { rmSync(directory, { recursive: true, force: true }); }

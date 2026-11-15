@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexCliPlanTransport } from '../src/adapters/codex/cli-transport.js';
@@ -13,6 +13,8 @@ const marker = 'SYNTHETIC_PRIVATE_CONTENT_DO_NOT_REPORT';
 
 function disposableCli(mode: string, timeoutMs = 3000) {
   const directory = mkdtempSync(join(tmpdir(), 'af-codex-diagnostic-'));
+  const workspace = join(directory, 'workspace');
+  mkdirSync(workspace, { mode: 0o700 });
   const executable = join(directory, 'codex-fixture');
   const script = `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -41,11 +43,28 @@ process.stdin.on('end', () => {
 });
 `;
   writeFileSync(executable, script, { mode: 0o700 });
-  const transport = new CodexCliPlanTransport({ executable, workspace: directory, model: 'gpt-6-sol', timeoutMs, maxOutputBytes: 200_000, authorized: true, codexHome: join(directory, 'dedicated-home') });
+  const transport = new CodexCliPlanTransport({ executable, workspace, model: 'gpt-6-sol', timeoutMs, maxOutputBytes: 200_000, authorized: true, codexHome: join(directory, 'dedicated-home') });
   return { transport, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
 }
 
 const request = { workItem: fixture.workItem, sourceRevision: fixture.workItem.revision, sourceSnapshot: fixture.plan.sourceSnapshot, model: 'gpt-6-sol', maxOutputBytes: 200_000 };
+
+for (const mode of ['nonempty', 'public-workspace', 'public-parent', 'symlink'] as const) {
+  test(`Codex skips the Git check only for a private empty workspace: ${mode}`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'af-codex-workspace-'));
+    const workspace = join(directory, 'workspace');
+    mkdirSync(workspace, { mode: 0o700 });
+    if (mode === 'nonempty') writeFileSync(join(workspace, 'untrusted.txt'), 'fixture');
+    if (mode === 'public-workspace') chmodSync(workspace, 0o755);
+    if (mode === 'public-parent') chmodSync(directory, 0o755);
+    if (mode === 'symlink') { rmSync(workspace, { recursive: true }); symlinkSync(directory, workspace); }
+    const transport = new CodexCliPlanTransport({ executable: '/does/not/run', workspace, model: 'gpt-6-sol', timeoutMs: 1000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
+    try {
+      await assert.rejects(transport.refine(request, new AbortController().signal), (error: unknown) =>
+        error instanceof RefinementDiagnosticError && error.code === 'REFINEMENT_CLI_CONFIG_INVALID' && !error.retryable);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+}
 
 for (const [mode, code, retryable] of [
   ['exit', 'REFINEMENT_CLI_EXIT_NONZERO', true],

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexCliPlanTransport, codexRefinementOutputSchema, normalizeCodexConfigurationOutput } from '../src/adapters/codex/cli-transport.js';
@@ -42,6 +42,8 @@ test('Codex refinement output schema derives from the trusted configuration cont
 
 test('Codex refinement delivers trusted policy, schema, and prompt on stdin to a disposable CLI fixture', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'af-codex-contract-'));
+  const workspace = join(directory, 'workspace');
+  mkdirSync(workspace, { mode: 0o700 });
   const executable = join(directory, 'codex-fixture');
   const capture = join(directory, 'capture.json');
   const fixture = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as ProjectConfiguration;
@@ -53,7 +55,7 @@ if (args.at(-2) === 'features' && args.at(-1) === 'list') {
   for (let i=0; i<args.length-2; i++) if (args[i] === '--disable') process.stdout.write(args[++i] + ' stable false\\n');
   process.exit(0);
 }
-if (args[0] !== 'exec') process.exit(2);
+if (args[0] !== 'exec' || args.at(-1) !== '-' || !args.includes('--skip-git-repo-check')) process.exit(2);
 let prompt = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', x => prompt += x);
@@ -67,7 +69,7 @@ process.stdin.on('end', () => {
   writeFileSync(executable, script, { mode: 0o700 });
   chmodSync(executable, 0o700);
   try {
-    const transport = new CodexCliPlanTransport({ executable, workspace: directory, model: 'gpt-6-sol', timeoutMs: 3000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
+    const transport = new CodexCliPlanTransport({ executable, workspace, model: 'gpt-6-sol', timeoutMs: 3000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
     const result = await transport.refine({ workItem: fixture.workItem, sourceRevision: fixture.workItem.revision, sourceSnapshot: 'durable-digest', model: 'gpt-6-sol', maxOutputBytes: 1000 }, new AbortController().signal);
     assert.deepEqual(result, {});
     const recorded = JSON.parse(readFileSync(capture, 'utf8')) as { prompt: Record<string, unknown>; schema: Record<string, unknown>; args: string[]; codexHome: string };
@@ -80,5 +82,7 @@ process.stdin.on('end', () => {
     assert.ok(recorded.args.includes('--output-schema'));
     assert.ok(recorded.args.includes('--sandbox'));
     assert.ok(recorded.args.includes('read-only'));
+    assert.equal(recorded.args.at(-1), '-');
+    assert.ok(recorded.args.includes('--skip-git-repo-check'));
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

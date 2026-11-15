@@ -12,9 +12,19 @@ import { PostgresWorkflowStore, type ExternalPlanAuthorization } from '../../src
 import { PostgresWorkItemStore } from '../../src/adapters/postgres/work-item-store.js';
 import { SyntheticJobs } from '../../src/adapters/synthetic/execution.js';
 import { evidenceContext, type Run } from '../../src/core/workflow.js';
+import { parseOwnerProjectAuthorization } from '../../src/core/project-authorization.js';
 
 const url = (role = 'af_app') => `postgres://${role}:synthetic-local-runtime-only@127.0.0.1:55432/agentic_factory_local`;
 const scope = { organizationId: 'synthetic-org-a', projectId: 'synthetic-software-project' };
+const repository = { installationId: 7, repositoryId: 9, fullName: 'owner/demo' };
+function authorizationFor(config: ReturnType<typeof fixture>, allowExecution = true): ExternalPlanAuthorization {
+  return parseOwnerProjectAuthorization({ schemaVersion: 1, policyRevision: BOOTSTRAP_POLICY.revision,
+    scope, repository, workItemId: config.workItem.id, sourceSnapshot: config.plan.sourceSnapshot,
+    profileId: 'software-general', environment: config.profile.environment,
+    capabilities: config.profile.requiredCapabilities, deliverables: config.profile.deliverables,
+    checks: config.profile.checks.map((check) => ({ id: check.id, layer: 'software', argv: check.command,
+      workingDirectory: '.', environmentVariables: {} })), limits: config.plan.budget, allowExecution }, scope, repository);
+}
 
 test('AF-004 gates approval and start on the current durable GitHub WorkItem snapshot', async () => {
   const items = new PostgresWorkItemStore(url());
@@ -27,19 +37,17 @@ test('AF-004 gates approval and start on the current durable GitHub WorkItem sna
     const intake = await items.ingest(scope, { kind: 'create', key: randomUUID() }, source('First objective'));
     const config = fixture(); config.workItem = intake.workItem;
     config.plan.workItemId = intake.workItem.id; config.plan.sourceSnapshot = intake.digest;
-    const authorization: ExternalPlanAuthorization = { scope, workItemId: intake.workItem.id, sourceSnapshot: intake.digest,
-      profileId: config.profile.id, capabilities: [...config.profile.requiredCapabilities],
-      checks: config.profile.checks.map((check) => check.id), deliverables: [...config.profile.deliverables],
-      limits: { ...config.plan.budget }, allowExecution: true };
-    const denied = new PostgresWorkflowStore(url());
+    const authorization = authorizationFor(config);
+    workflows = new PostgresWorkflowStore(url(), undefined, [authorization], repository);
+    const denied = new PostgresWorkflowStore(url(), undefined, [], repository);
     try {
-      const deniedId = randomUUID(); await denied.create(scope, deniedId, config);
+      const deniedId = randomUUID(); await workflows.create(scope, deniedId, config);
       await assert.rejects(denied.apply(scope, deniedId, 0, 'approve', { type: 'approve', planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision }), /owner-approved authorization/);
     } finally { await denied.close(); }
-    workflows = new PostgresWorkflowStore(url(), undefined, [authorization]);
-    const wrong = structuredClone(config); wrong.plan.sourceSnapshot = 'wrong-snapshot';
-    const wrongId = randomUUID(); await workflows.create(scope, wrongId, wrong);
-    await assert.rejects(workflows.apply(scope, wrongId, 0, 'approve', { type: 'approve', planRevision: wrong.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision }), /stale/);
+    const wrongId = randomUUID(); await workflows.create(scope, wrongId, config);
+    await workflows.pool.query(`UPDATE factory.runs SET state=jsonb_set(state,'{config,plan,sourceSnapshot}',to_jsonb($4::text))
+      WHERE organization_id=$1 AND project_id=$2 AND id=$3`, [scope.organizationId, scope.projectId, wrongId, 'wrong-snapshot']);
+    await assert.rejects(workflows.apply(scope, wrongId, 0, 'approve', { type: 'approve', planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision }), /stale/);
     const id = randomUUID(); await workflows.create(scope, id, config);
     const unauthorizedRevision = structuredClone(config);
     unauthorizedRevision.plan.revision = '2'; unauthorizedRevision.plan.sourceSnapshot = 'unapproved-snapshot';
@@ -49,11 +57,11 @@ test('AF-004 gates approval and start on the current durable GitHub WorkItem sna
     const approval = { type: 'approve' as const, planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision };
     const approved = await workflows.apply(scope, id, 0, 'approve', approval);
     assert.equal(approved.phase, 'ready');
-    const withoutAuthorization = new PostgresWorkflowStore(url());
+    const withoutAuthorization = new PostgresWorkflowStore(url(), undefined, [], repository);
     try {
       await assert.rejects(withoutAuthorization.apply(scope, id, approved.version, 'start-without-authorization', { type: 'start' }), /owner-approved authorization/);
     } finally { await withoutAuthorization.close(); }
-    const noExecution = new PostgresWorkflowStore(url(), undefined, [{ ...authorization, allowExecution: false }]);
+    const noExecution = new PostgresWorkflowStore(url(), undefined, [{ ...authorization, allowExecution: false }], repository);
     try {
       const noExecutionId = randomUUID(); await noExecution.create(scope, noExecutionId, config);
       const reviewOnly = await noExecution.apply(scope, noExecutionId, 0, 'approve', approval);
@@ -79,11 +87,8 @@ test('AF-004 reconciles existing scoped jobs after execution revocation, source 
     const intake = await items.ingest(scope, { kind: 'create', key: randomUUID() }, source('Recovery objective'));
     const config = fixture(); config.workItem = intake.workItem;
     config.plan.workItemId = intake.workItem.id; config.plan.sourceSnapshot = intake.digest;
-    const authorization: ExternalPlanAuthorization = { scope, workItemId: intake.workItem.id, sourceSnapshot: intake.digest,
-      profileId: config.profile.id, capabilities: [...config.profile.requiredCapabilities],
-      checks: config.profile.checks.map((check) => check.id), deliverables: [...config.profile.deliverables],
-      limits: { ...config.plan.budget }, allowExecution: true };
-    store = new PostgresWorkflowStore(url(), undefined, [authorization]);
+    const authorization = authorizationFor(config);
+    store = new PostgresWorkflowStore(url(), undefined, [authorization], repository);
     const id = randomUUID(); let run = await store.create(scope, id, config);
     run = await store.apply(scope, id, run.version, 'approve',
       { type: 'approve', planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision });
@@ -94,7 +99,7 @@ test('AF-004 reconciles existing scoped jobs after execution revocation, source 
       authorizedEnvironment: context.environmentFingerprint, maxDurationSeconds: 300, maxMemoryMb: 128 };
     const { jobId } = await activeJobs.start(request);
     run = await store.apply(scope, id, run.version, 'job-started', { type: 'job-started', jobId, operationKey: request.idempotencyKey });
-    revoked = new PostgresWorkflowStore(url(), undefined, [{ ...authorization, allowExecution: false }]);
+    revoked = new PostgresWorkflowStore(url(), undefined, [{ ...authorization, allowExecution: false }], repository);
     const recovery = new SyntheticJobs(directory, () => 0, (value, operation) => revoked!.authorizeJob(scope, value, operation));
     await assert.rejects(recovery.start({ ...request, idempotencyKey: 'new-submission' }), /execution constraints/);
     assert.equal((await recovery.start(request)).jobId, jobId);
@@ -114,7 +119,7 @@ test('AF-004 reconciles existing scoped jobs after execution revocation, source 
     const fixtureJobs = new SyntheticJobs(directory, () => 0, async () => scope);
     const legacyJob = await fixtureJobs.start(legacyRequest);
     const legacyRecovery = new SyntheticJobs(directory, () => 0, (value, operation) => store!.authorizeJob(scope, value, operation));
-    await assert.rejects(legacyRecovery.start({ ...legacyRequest, idempotencyKey: 'legacy-submission' }), /policy revision/);
+    await assert.rejects(legacyRecovery.start({ ...legacyRequest, idempotencyKey: 'legacy-submission' }), /stale|policy revision/);
     assert.equal((await store.transaction((client) => store!.getForUpdate(client, scope, id))).id, id);
     assert.equal((await legacyRecovery.inspect(legacyJob.jobId, legacyContext)).status, 'running');
     await legacyRecovery.cancel(legacyJob.jobId, legacyContext);
@@ -129,6 +134,47 @@ test('AF-004 reconciles existing scoped jobs after execution revocation, source 
     await Promise.all([items.close(), store?.close(), revoked?.close(), other?.close()]);
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('MVP-02A reloads owner authorization for project checks and previously approved external Runs', async () => {
+  const items = new PostgresWorkItemStore(url());
+  const reference = `owner/demo#${randomUUID()}`;
+  const source = (objective: string) => ({ kind: 'github' as const,
+    bytes: Buffer.from(JSON.stringify({ objective, context: 'Synthetic owner authorization fixture.' })),
+    origin: { provider: 'github', reference, updatedAt: '2026-10-24T00:00:00Z' } });
+  let store: PostgresWorkflowStore | undefined;
+  try {
+    const intake = await items.ingest(scope, { kind: 'create', key: randomUUID() }, source('Review a software delivery plan'));
+    const config = fixture(); config.workItem = intake.workItem;
+    config.plan.workItemId = intake.workItem.id; config.plan.sourceSnapshot = intake.digest;
+    config.profile.environment = { language: 'typescript', version: '5.9', fingerprint: `sha256:${'b'.repeat(64)}` };
+    config.profile.checks = [{ id: 'repo-tests', layer: 'software', required: true, command: ['npm', 'test'] }];
+    config.policy.requiredChecks = ['repo-tests'];
+    const authorization = authorizationFor(config, false);
+    let current: ExternalPlanAuthorization[] = [authorization];
+    store = new PostgresWorkflowStore(url(), undefined, async () => current, repository);
+    const excessive = structuredClone(config); excessive.profile.requiredCapabilities.push('delivery.deploy');
+    await assert.rejects(store.create(scope, randomUUID(), excessive), /Missing capability|outside trusted policy/);
+    const unknownCheck = structuredClone(config); unknownCheck.profile.checks[0]!.id = 'unreviewed-check';
+    unknownCheck.policy.requiredChecks = ['unreviewed-check'];
+    await assert.rejects(store.create(scope, randomUUID(), unknownCheck), /Mandatory verification/);
+    const wrongEnvironment = structuredClone(config); wrongEnvironment.profile.environment.fingerprint = 'unreviewed';
+    await assert.rejects(store.create(scope, randomUUID(), wrongEnvironment), /trusted command registry/);
+    const id = randomUUID(); let run = await store.create(scope, id, config);
+    run = await store.apply(scope, id, run.version, 'approve',
+      { type: 'approve', planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision });
+    assert.equal(run.phase, 'ready');
+    await assert.rejects(store.apply(scope, id, run.version, 'start-disabled', { type: 'start' }), /execution constraints/);
+    current = [];
+    await assert.rejects(store.apply(scope, id, run.version, 'start-revoked', { type: 'start' }), /owner-approved authorization/);
+    current = [{ ...authorization, repository: { ...repository, repositoryId: 10 } }];
+    await assert.rejects(store.apply(scope, id, run.version, 'start-wrong-repository', { type: 'start' }), /trusted repository scope/);
+    current = [authorization];
+    await items.ingest(scope, { kind: 'revise', key: randomUUID(), id: intake.workItem.id, expectedRevision: 'r1' }, source('Changed objective'));
+    await assert.rejects(store.apply(scope, id, run.version, 'start-stale', { type: 'start' }), /stale/);
+    await assert.rejects(store.apply({ ...scope, projectId: 'synthetic-ml-project' }, id, run.version, 'cross-project', { type: 'start' }), /unavailable/);
+    assert.equal((await store.get(scope, id)).phase, 'ready');
+  } finally { await items.close(); await store?.close(); }
 });
 function fixture() { return validateConfiguration(JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as unknown, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG); }
 

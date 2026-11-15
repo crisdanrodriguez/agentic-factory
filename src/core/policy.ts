@@ -1,6 +1,7 @@
 import type { ProjectConfiguration } from './configuration.js';
 import { evidenceContextSchema, verificationResultSchema, type Capability, type EvidenceContext, type ProjectProfile } from './contracts.js';
 import { assertTrustedVerificationChecks } from './verification-registry.js';
+import type { OwnerProjectAuthorization } from './project-authorization.js';
 
 export interface GlobalPolicy {
   readonly revision: string;
@@ -19,7 +20,7 @@ export interface CapabilityCatalog {
 }
 
 export const BOOTSTRAP_POLICY: GlobalPolicy = Object.freeze({
-  revision: 'bootstrap-policy-2',
+  revision: 'bootstrap-policy-3',
   requirePlanApproval: true,
   requireEvidence: true,
   limits: Object.freeze({ maxTechnicalAttempts: 3, maxVariants: 2, maxDurationSeconds: 300, maxMemoryMb: 1024, maxArtifactBytes: 10485760 }),
@@ -46,7 +47,8 @@ function requireUnique(values: readonly string[], label: string): void {
   if (new Set(values).size !== values.length) throw new Error(`Duplicate ${label} are not allowed.`);
 }
 
-export function assertPolicy(config: ProjectConfiguration, policy: GlobalPolicy, catalog: CapabilityCatalog): void {
+export function assertPolicy(config: ProjectConfiguration, policy: GlobalPolicy, catalog: CapabilityCatalog,
+  authorization?: OwnerProjectAuthorization): void {
   const { plan, profile } = config;
   if (!config.policy.requirePlanApproval || !config.policy.requireEvidence) {
     throw new Error('Project policy cannot disable required plan approval or evidence.');
@@ -62,7 +64,15 @@ export function assertPolicy(config: ProjectConfiguration, policy: GlobalPolicy,
   requireUnique(profile.deliverables, 'deliverables');
   requireUnique(plan.deliveryActions, 'delivery actions');
   const rules = policy.profiles[profile.id];
-  for (const id of rules.requiredChecks) {
+  if (authorization && (config.workItem.origin.kind !== 'external-ticket' || config.workItem.origin.provider !== 'github' ||
+      !config.workItem.origin.reference.startsWith(`${authorization.repository.fullName}#`) ||
+      authorization.profileId !== profile.id || authorization.workItemId !== config.workItem.id ||
+      authorization.sourceSnapshot !== plan.sourceSnapshot || authorization.scope.projectId !== config.workItem.projectId ||
+      authorization.policyRevision !== policy.revision)) {
+    throw new Error('Plan is outside its owner-approved project authorization.');
+  }
+  const requiredChecks = authorization?.checks.map((check) => check.id) ?? rules.requiredChecks;
+  for (const id of requiredChecks) {
     if (!config.policy.requiredChecks.includes(id)) throw new Error(`Mandatory verification cannot be removed: ${id}.`);
   }
   for (const id of config.policy.requiredChecks) {
@@ -86,12 +96,20 @@ export function assertPolicy(config: ProjectConfiguration, policy: GlobalPolicy,
   }
   if (profile.requiredCapabilities.length !== rules.requiredCapabilities.length ||
       profile.deliverables.length !== rules.deliverables.length ||
-      profile.checks.length !== rules.requiredChecks.length ||
-      config.policy.requiredChecks.length !== rules.requiredChecks.length ||
+      profile.checks.length !== requiredChecks.length ||
+      config.policy.requiredChecks.length !== requiredChecks.length ||
       plan.dependencies.length !== 0) {
     throw new Error('Plan requests capabilities, deliverables, checks, or dependencies outside trusted policy.');
   }
-  assertTrustedVerificationChecks(config);
+  if (authorization && (profile.requiredCapabilities.length !== authorization.capabilities.length ||
+      profile.requiredCapabilities.some((value) => !authorization.capabilities.includes(value)) ||
+      profile.deliverables.length !== authorization.deliverables.length ||
+      profile.deliverables.some((value) => !authorization.deliverables.includes(value)) ||
+      Object.entries(authorization.limits).some(([key, limit]) =>
+        plan.budget[key as keyof ProjectConfiguration['plan']['budget']] > limit))) {
+    throw new Error('Plan exceeds owner-approved project limits.');
+  }
+  assertTrustedVerificationChecks(config, authorization);
   if (profile.id === 'ml-research' && !plan.research) throw new Error('ML research requires a versioned protocol, dataset, and split.');
   if (profile.id === 'ml-research') {
     for (const layer of ['software', 'methodology', 'findings']) {
@@ -107,8 +125,9 @@ export function assertRequiredVerification(
   input: unknown,
   policy: GlobalPolicy = BOOTSTRAP_POLICY,
   catalog: CapabilityCatalog = BOOTSTRAP_CONTRACT_CATALOG,
+  authorization?: OwnerProjectAuthorization,
 ): void {
-  assertPolicy(config, policy, catalog);
+  assertPolicy(config, policy, catalog, authorization);
   const validContext = evidenceContextSchema.safeParse(context);
   if (!validContext.success) throw new Error('Invalid evidence context.');
   const expected = {

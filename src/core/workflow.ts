@@ -3,6 +3,8 @@ import { validateConfiguration } from './configuration.js';
 import type { EvidenceContext, Outcome, VerificationResult } from './contracts.js';
 import { assertRequiredVerification, BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from './policy.js';
 import { assertPlanSafety } from './plan-safety.js';
+import type { OwnerProjectAuthorization } from './project-authorization.js';
+import { ownerAuthorizationSnapshot } from './project-authorization.js';
 
 export interface Scope { organizationId: string; projectId: string }
 export interface Run {
@@ -11,7 +13,8 @@ export interface Run {
   config: ProjectConfiguration;
   phase: 'awaiting-approval' | 'ready' | 'running' | 'awaiting-job' | 'verifying' | 'review' | 'terminal';
   outcome: Outcome;
-  approval: { status: 'pending' | 'approved' | 'rejected' | 'invalidated'; planRevision: string; policyRevision: string };
+  approval: { status: 'pending' | 'approved' | 'rejected' | 'invalidated'; planRevision: string; policyRevision: string;
+    authorizationSnapshot?: string };
   step: { attempts: number; variants: number; generation: number };
   job: { id: string; operationKey: string } | null;
   evidence: VerificationResult[];
@@ -40,25 +43,35 @@ export function evidenceContext(run: Run): EvidenceContext {
     ...(research ? { protocolRevision: research.protocolRevision, datasetVersion: research.datasetVersion, splitVersion: research.splitVersion, parametersDigest: research.parametersDigest } : {}),
   };
 }
-export function createRun(id: string, input: ProjectConfiguration): Run {
-  const config = validateConfiguration(input, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);
+export function createRun(id: string, input: ProjectConfiguration, authorization?: OwnerProjectAuthorization): Run {
+  const config = validateConfiguration(input, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG, authorization);
   return { id, version: 0, config, phase: 'awaiting-approval',
     outcome: { execution: 'pending', verification: 'unverified', objective: 'not-assessed', humanDecision: 'pending' },
     approval: { status: 'pending', planRevision: config.plan.revision, policyRevision: config.plan.policyRevision },
     step: { attempts: 0, variants: 0, generation: 0 }, job: null, evidence: [], artifactReferences: [], cancellationRequested: false, simulation: true };
 }
-export function transition(current: Run, command: Command): Run {
+export function transition(current: Run, command: Command, authorization?: OwnerProjectAuthorization): Run {
   const run = structuredClone(current);
   const require = (condition: boolean, message = 'Invalid workflow transition.'): void => { if (!condition) throw new Error(message); };
-  if (command.type === 'approve' || command.type === 'start' || command.type === 'job-started') assertPlanSafety(run.config);
+  if (command.type === 'approve' || command.type === 'start' || command.type === 'job-started') {
+    assertPlanSafety(run.config, undefined, authorization);
+    if (run.config.workItem.origin.kind === 'external-ticket') {
+      if (!authorization) throw new Error('External plan requires owner-approved authorization.');
+      if (command.type !== 'approve') {
+        require(run.approval.authorizationSnapshot === ownerAuthorizationSnapshot(authorization),
+          'Owner authorization changed after plan approval.');
+        require(authorization.allowExecution, 'External plan execution is not owner-authorized.');
+      }
+    }
+  }
   if (command.type === 'revise') {
     require(run.config.workItem.origin.kind !== 'external-ticket' && command.config.workItem.origin.kind !== 'external-ticket',
       'External plan revision requires a separate authorized workflow.');
     require(!['running', 'awaiting-job'].includes(run.phase) && !run.cancellationRequested, 'Cancel active work before revising it.');
-    const config = validateConfiguration(command.config, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);
+    const config = validateConfiguration(command.config, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG, authorization);
     require(config.plan.revision !== run.config.plan.revision, 'A changed plan requires a new revision.');
     require(config.workItem.id === run.config.workItem.id && config.workItem.ownerId === run.config.workItem.ownerId && config.workItem.projectId === run.config.workItem.projectId, 'Revision cannot change task ownership.');
-    const replacement = createRun(run.id, config);
+    const replacement = createRun(run.id, config, authorization);
     replacement.version = run.version + 1;
     replacement.approval.status = 'invalidated';
     replacement.step.generation = run.step.generation + 1;
@@ -71,6 +84,7 @@ export function transition(current: Run, command: Command): Run {
       require(run.phase === 'awaiting-approval');
       require(command.planRevision === run.config.plan.revision && command.policyRevision === run.config.plan.policyRevision, 'Approval revision mismatch.');
       run.approval.status = command.type === 'approve' ? 'approved' : 'rejected';
+      if (command.type === 'approve' && authorization) run.approval.authorizationSnapshot = ownerAuthorizationSnapshot(authorization);
       run.phase = command.type === 'approve' ? 'ready' : 'terminal';
       if (command.type === 'reject') { run.outcome.execution = 'cancelled'; run.outcome.humanDecision = 'rejected'; }
       break;
@@ -115,7 +129,7 @@ export function transition(current: Run, command: Command): Run {
       break;
     case 'verify':
       require(run.phase === 'verifying');
-      assertRequiredVerification(run.config, evidenceContext(run), command.results);
+      assertRequiredVerification(run.config, evidenceContext(run), command.results, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG, authorization);
       run.evidence = command.results; run.outcome.verification = 'verified'; run.phase = 'review';
       break;
     case 'assess':

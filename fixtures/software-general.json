@@ -44,7 +44,7 @@
   "plan": {
     "id": "synthetic-software-plan",
     "revision": "1",
-    "policyRevision": "bootstrap-policy-2",
+    "policyRevision": "bootstrap-policy-3",
     "workItemId": "synthetic-software-task",
     "sourceSnapshot": "synthetic-source-1",
     "scope": "Specify a local utility, its tests, and usage report.",

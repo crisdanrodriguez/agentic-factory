@@ -21,6 +21,8 @@ import { GitHubAppCommentWriter, GitHubAppInstallation, GitHubAppIssueReader, No
 import { GitHubMvpCoordinator, type MvpCheckpoint, type GitHubMvpCheckpointStore } from '../src/core/github-mvp.js';
 import type { GitHubIssuePolling, GitHubIssueReader } from '../src/ports/github-api.js';
 import { createRun, transition } from '../src/core/workflow.js';
+import { parseOwnerProjectAuthorization } from '../src/core/project-authorization.js';
+import { BOOTSTRAP_POLICY } from '../src/core/policy.js';
 
 const issue = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueId: 11, issueNumber: 4, senderId: 13, senderLogin: 'owner', title: 'Add deterministic parser', body: 'Record only.', action: 'opened' as const, updatedAt: '2026-10-24T00:00:00Z' };
 const trust = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', organizationId: 'org-1', ownerId: 'owner-1', projectId: 'demo', authorizedSenderId: 13 };
@@ -343,10 +345,19 @@ test('MVP-01 coordinator survives repeated polling and approves only the current
   const item = record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }).workItem;
   const config = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as ProjectConfiguration;
   config.workItem = item; config.plan.workItemId = item.id; config.plan.revision = 'plan-r1';
+  config.plan.sourceSnapshot = 'd'.repeat(64);
+  const ownerScope = { organizationId: 'org-1', projectId: 'demo' };
+  const repository = { installationId: 7, repositoryId: 9, fullName: 'owner/demo' };
+  const authorization = parseOwnerProjectAuthorization({ schemaVersion: 1, policyRevision: BOOTSTRAP_POLICY.revision,
+    scope: ownerScope, repository, workItemId: item.id, sourceSnapshot: config.plan.sourceSnapshot,
+    profileId: 'software-general', environment: config.profile.environment,
+    capabilities: config.profile.requiredCapabilities, deliverables: config.profile.deliverables,
+    checks: config.profile.checks.map((check) => ({ id: check.id, layer: 'software', argv: check.command,
+      workingDirectory: '.', environmentVariables: {} })), limits: config.plan.budget }, ownerScope, repository);
   const runs = new Map<string, Run>(); const workflows: WorkflowStore = {
     async create(_scope, id, input) { const run = createRun(id, input); runs.set(id, run); return run; },
     async get(_scope, id) { const run = runs.get(id); if (!run) throw new Error('missing run'); return run; },
-    async apply(scope, id, version, eventId, command) { const run = await this.get(scope, id); assert.equal(run.version, version); const next = transition(run, command); runs.set(id, next); void eventId; return next; },
+    async apply(scope, id, version, eventId, command) { const run = await this.get(scope, id); assert.equal(run.version, version); const next = transition(run, command, authorization); runs.set(id, next); void eventId; return next; },
   };
   const checkpoints = new Map<string, MvpCheckpoint>(); const checkpointStore: GitHubMvpCheckpointStore = { async load(reference) { return checkpoints.get(reference); }, async save(value) { checkpoints.set(value.reference, structuredClone(value)); } };
   const items: WorkItemStore = { async ingest() { return record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }); }, async get() { return { workItem: item, version: 1, actor: 'runtime', sourceKind: 'github', digest: 'd'.repeat(64) }; }, async getByOrigin() { return undefined; }, async close() {} };

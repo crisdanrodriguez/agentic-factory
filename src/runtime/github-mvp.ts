@@ -11,6 +11,7 @@ import { PostgresRefinementIntentStore } from '../adapters/postgres/refinement-i
 import { CodexCliPlanTransport } from '../adapters/codex/cli-transport.js';
 import { AuthorizedCodexPlanRefiner } from '../adapters/codex/plan-refiner.js';
 import { GitHubRefinementWorker } from './github-refinement-worker.js';
+import { loadOwnerProjectAuthorization } from '../adapters/owner-project-authorization.js';
 
 const configSchema = z.strictObject({
   intakeDatabaseUrlEnvironment: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/),
@@ -26,6 +27,7 @@ const configSchema = z.strictObject({
   allowCodexRefinement: z.boolean(),
   allowGitHubWrites: z.boolean(),
   allowOwnerApprovals: z.boolean(),
+  ownerAuthorizationPath: z.string().min(1).optional(),
   acceptanceMode: z.literal('testbed-issue-1').optional(),
 });
 export type GitHubMvpRuntimeConfig = z.infer<typeof configSchema>;
@@ -64,7 +66,13 @@ export async function createGitHubMvpRuntime(config: GitHubMvpRuntimeConfig, cap
   const commentReader = new GitHubAppCommentReader(installation, config.trust);
   const writer = new GitHubAppCommentWriter(installation, config.trust, receipts);
   const intents = new PostgresRefinementIntentStore(databaseUrl);
-  const items = new PostgresWorkItemStore(databaseUrl); const workflows = new PostgresWorkflowStore(databaseUrl);
+  const repository = { installationId: config.trust.installationId, repositoryId: config.trust.repositoryId,
+    fullName: config.trust.repositoryFullName };
+  const authorizationSource = capability !== 'intake' && config.ownerAuthorizationPath
+    ? async () => [await loadOwnerProjectAuthorization(config.ownerAuthorizationPath!, config.scope, repository)] : undefined;
+  if (authorizationSource) await authorizationSource();
+  const items = new PostgresWorkItemStore(databaseUrl);
+  const workflows = new PostgresWorkflowStore(databaseUrl, undefined, authorizationSource ?? [], repository);
   const intake = new GitHubIssueIntake(items, config.trust); const poller = new (await import('../adapters/github/issue-poller.js')).GitHubIssuePoller(reader, intake, true, config.acceptanceMode === 'testbed-issue-1' ? (events) => validateTestbedIssueOneBatch(events, config.trust) : undefined);
   const codexConfig = config.codex.codexHome ? { ...config.codex, codexHome: config.codex.codexHome } : { executable: config.codex.executable, workspace: config.codex.workspace, model: config.codex.model, timeoutMs: config.codex.timeoutMs, maxOutputBytes: config.codex.maxOutputBytes, maxCalls: config.codex.maxCalls, authorized: config.codex.authorized };
   const codexRefiner = new AuthorizedCodexPlanRefiner(new CodexCliPlanTransport(codexConfig), { authorized: config.codex.authorized, model: config.codex.model, maxCalls: config.codex.maxCalls, maxOutputBytes: config.codex.maxOutputBytes });

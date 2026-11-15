@@ -10,6 +10,11 @@ const repositorySchema = z.strictObject({
 const scopeSchema = z.strictObject({ organizationId: identifier, projectId: identifier });
 const safeArg = z.string().min(1).max(512).refine((value) =>
   !/[\r\n\0`$;&|<>]/.test(value), 'Shell syntax is not permitted in trusted argv');
+function isInlineCodeFlag(value: string): boolean {
+  if (/^--(?:eval|print|command|expression|exec)(?:=|$)/i.test(value)) return true;
+  // Reject short flags containing common interpreter code modes, including joined values and flag clusters.
+  return /^-(?!-)[A-Za-z0-9]*[cep]/i.test(value);
+}
 const workingDirectory = z.string().max(240).refine((value) => value === '.' ||
   (value.length > 0 && value.split('/').every((part) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(part) && part !== '.' && part !== '..')),
 'Working directory must be a safe relative path');
@@ -19,7 +24,7 @@ const checkSchema = z.strictObject({
   argv: z.array(safeArg).min(1).max(32).refine((argv) =>
     /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(argv[0] ?? '') &&
     !['sh', 'bash', 'zsh', 'fish', 'cmd', 'powershell', 'pwsh'].includes((argv[0] ?? '').toLowerCase()) &&
-    !argv.includes('-c'), 'Direct shell and inline code execution are not trusted checks'),
+    !argv.some(isInlineCodeFlag), 'Direct shell and inline code execution are not trusted checks'),
   workingDirectory,
   environmentVariables: z.strictObject({
     CI: z.literal('true').optional(), TZ: z.literal('UTC').optional(), LANG: z.enum(['C', 'C.UTF-8']).optional(),

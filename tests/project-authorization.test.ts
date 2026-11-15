@@ -77,6 +77,32 @@ test('owner authorization rejects repository, scope, environment, check, and per
   assert.throws(() => parseOwnerProjectAuthorization({ ...raw, checks: [{ ...raw.checks[0], environmentVariables: { NODE_OPTIONS: '--require unsafe' } }] }, scope, repository), /invalid/);
 });
 
+test('owner authorization rejects executable inline-code flags and joined values', () => {
+  const { raw } = projectFixture();
+  for (const argv of [
+    ['node', '-e', 'console.log(1)'],
+    ['node', '-econsole.log(1)'],
+    ['node', '-econsole.log("hello world")'],
+    ['node', '--eval', 'console.log(1)'],
+    ['node', '--eval=console.log(1)'],
+    ['node', '-p', 'process.version'],
+    ['node', '-pprocess.version'],
+    ['node', '--print=process.version'],
+    ['python3', '-c', 'print(1)'],
+    ['python3', '-cprint(1)'],
+    ['python3', '--command=print(1)'],
+    ['ruby', '-eputs(1)'],
+    ['perl', '-we', 'print(1)'],
+    ['perl', '-weprint(1)'],
+    ['npm', 'exec', '--', 'node', '--eval=console.log(1)'],
+  ]) {
+    assert.throws(() => parseOwnerProjectAuthorization({ ...raw,
+      checks: [{ ...raw.checks[0], argv }],
+    }, scope, repository), /invalid/, argv.join(' '));
+  }
+  assert.deepEqual(parseOwnerProjectAuthorization(raw, scope, repository).checks[0]!.argv, ['npm', 'test']);
+});
+
 test('owner authorization loader accepts only private, owner-controlled regular files', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'af-owner-authorization-'));
   const path = join(directory, 'project.json'); const linked = join(directory, 'linked.json');

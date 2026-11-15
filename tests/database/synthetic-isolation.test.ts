@@ -19,7 +19,12 @@ test('review regression: database-authorized organizations cannot retrieve overw
   const scopeB = { ...scopeA, organizationId: 'synthetic-org-b' };
   try {
     const config = validateConfiguration(JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as unknown, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);
-    const id = randomUUID(); const runA = await a.create(scopeA, id, config); const runB = await b.create(scopeB, id, config);
+    const id = randomUUID(); let runA = await a.create(scopeA, id, config); let runB = await b.create(scopeB, id, config);
+    const approval = { type: 'approve' as const, planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision };
+    runA = await a.apply(scopeA, id, runA.version, 'approve', approval);
+    runB = await b.apply(scopeB, id, runB.version, 'approve', approval);
+    runA = await a.apply(scopeA, id, runA.version, 'start', { type: 'start' });
+    runB = await b.apply(scopeB, id, runB.version, 'start', { type: 'start' });
     const context = evidenceContext(runA); assert.deepEqual(context, evidenceContext(runB));
     const jobsA = new SyntheticJobs(directory, () => 0, (context) => a.authorizeJob(scopeA, context));
     const jobsB = new SyntheticJobs(directory, () => 2000, (context) => b.authorizeJob(scopeB, context));

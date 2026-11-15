@@ -170,6 +170,12 @@ node dist/cli/index.js github-mvp refine
 Refinement is manually triggered. Each invocation claims at most one due
 intent; there is no background scheduler. Restart recovery requires another
 authorized `github-mvp refine` invocation after any active lease expires.
+The command reports a fixed JSON outcome: `succeeded` exits 0;
+`failed-retryable` and `failed-permanent` exit 1; `interrupted` and
+`unresolved` exit 2; `no-due-intent` exits 3. An error code is a sanitized
+diagnostic, not a model transcript. Verify the durable intent and Run after
+every invocation; an exit code or claimed intent alone does not prove that a
+plan was created. No outcome triggers an automatic retry.
 
 For intake, inject only `FACTORY_GITHUB_INTAKE_DATABASE_URL`, using the
 `af_github_intake` role. For refinement, inject only

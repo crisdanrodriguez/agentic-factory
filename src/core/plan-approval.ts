@@ -1,5 +1,6 @@
 import { validateConfiguration, type ProjectConfiguration } from './configuration.js';
 import { workItemSchema } from './contracts.js';
+import { configurationFailure, RefinementDiagnosticError } from './refinement-diagnostics.js';
 import { BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from './policy.js';
 import { createRun, type Run, type Scope } from './workflow.js';
 import type { WorkflowStore } from '../ports/workflow-store.js';
@@ -11,11 +12,13 @@ export class RevisionBoundPlanService {
   constructor(private readonly workflows: WorkflowStore, private readonly refiner: PlanRefiner) {}
 
   async refine(scope: Scope, workItem: WorkItem, sourceRevision: string, signal?: AbortSignal, sourceSnapshot?: string): Promise<ProjectConfiguration> {
-    if (workItem.projectId !== scope.projectId) throw new PlanApprovalError('WorkItem scope is not authorized.');
+    if (workItem.projectId !== scope.projectId) throw new RefinementDiagnosticError('REFINEMENT_WORK_ITEM_MISMATCH', false);
     const proposal = await this.refiner.refine({ workItem, sourceRevision, ...(sourceSnapshot ? { sourceSnapshot } : {}) }, signal);
-    const config = validateConfiguration(proposal, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);
-    if (JSON.stringify(config.workItem) !== JSON.stringify(workItemSchema.parse(workItem))) throw new PlanApprovalError('Plan is not bound to the exact WorkItem.');
-    if (sourceSnapshot && config.plan.sourceSnapshot !== sourceSnapshot) throw new PlanApprovalError('Plan source snapshot does not match the durable intake.');
+    let config: ProjectConfiguration;
+    try { config = validateConfiguration(proposal, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG); }
+    catch (error) { throw configurationFailure(error); }
+    if (JSON.stringify(config.workItem) !== JSON.stringify(workItemSchema.parse(workItem))) throw new RefinementDiagnosticError('REFINEMENT_WORK_ITEM_MISMATCH', false);
+    if (sourceSnapshot && config.plan.sourceSnapshot !== sourceSnapshot) throw new RefinementDiagnosticError('REFINEMENT_SOURCE_SNAPSHOT_MISMATCH', false);
     return config;
   }
 

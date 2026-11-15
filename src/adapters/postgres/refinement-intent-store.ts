@@ -61,24 +61,26 @@ export class PostgresRefinementIntentStore implements RefinementIntentStore {
       return { ...map(updated.rows[0]!), leaseToken: token };
     });
   }
-  async retry(claim: RefinementClaim, errorCode: string, delaySeconds: number): Promise<void> {
+  async retry(claim: RefinementClaim, errorCode: string, delaySeconds: number): Promise<RefinementIntent['status']> {
     if (!/^[A-Z0-9_.-]{1,80}$/.test(errorCode) || !Number.isInteger(delaySeconds) || delaySeconds < 1 || delaySeconds > 3600) throw new Error('Invalid refinement retry metadata.');
-    await this.transaction(async (client) => {
-      const result = await client.query<{ attempt_count: number; max_attempts: number }>(`UPDATE factory.refinement_intents
+    return this.transaction(async (client) => {
+      const result = await client.query<{ status: RefinementIntent['status'] }>(`UPDATE factory.refinement_intents
         SET status=CASE WHEN cancellation_requested THEN 'cancelled' WHEN attempt_count >= max_attempts THEN 'failed' ELSE 'pending' END,
             next_attempt_at=clock_timestamp()+($6::text || ' seconds')::interval, lease_token=NULL, lease_expires_at=NULL,
             last_error=$5, updated_at=clock_timestamp()
         WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision=$4 AND status='running' AND lease_token=$7 AND lease_expires_at > clock_timestamp()
-        RETURNING attempt_count,max_attempts`, [claim.scope.organizationId, claim.scope.projectId, claim.workItemId, claim.sourceRevision, errorCode, delaySeconds, claim.leaseToken]);
+        RETURNING status`, [claim.scope.organizationId, claim.scope.projectId, claim.workItemId, claim.sourceRevision, errorCode, delaySeconds, claim.leaseToken]);
       if (result.rowCount !== 1) throw new Error('Stale refinement claim.');
+      return result.rows[0]!.status;
     });
   }
-  async fail(claim: RefinementClaim, errorCode: string): Promise<void> {
+  async fail(claim: RefinementClaim, errorCode: string): Promise<RefinementIntent['status']> {
     if (!/^[A-Z0-9_.-]{1,80}$/.test(errorCode)) throw new Error('Invalid refinement failure metadata.');
-    await this.transaction(async (client) => {
-      const result = await client.query(`UPDATE factory.refinement_intents SET status=CASE WHEN cancellation_requested THEN 'cancelled' ELSE 'failed' END, lease_token=NULL, lease_expires_at=NULL, last_error=$5, updated_at=clock_timestamp()
-        WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision=$4 AND status='running' AND lease_token=$6 AND lease_expires_at > clock_timestamp()`, [claim.scope.organizationId, claim.scope.projectId, claim.workItemId, claim.sourceRevision, errorCode, claim.leaseToken]);
+    return this.transaction(async (client) => {
+      const result = await client.query<{ status: RefinementIntent['status'] }>(`UPDATE factory.refinement_intents SET status=CASE WHEN cancellation_requested THEN 'cancelled' ELSE 'failed' END, lease_token=NULL, lease_expires_at=NULL, last_error=$5, updated_at=clock_timestamp()
+        WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision=$4 AND status='running' AND lease_token=$6 AND lease_expires_at > clock_timestamp() RETURNING status`, [claim.scope.organizationId, claim.scope.projectId, claim.workItemId, claim.sourceRevision, errorCode, claim.leaseToken]);
       if (result.rowCount !== 1) throw new Error('Stale refinement claim.');
+      return result.rows[0]!.status;
     });
   }
   async cancel(scope: Scope, workItemId: string, sourceRevision: string): Promise<void> {

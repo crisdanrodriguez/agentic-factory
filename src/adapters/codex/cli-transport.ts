@@ -1,10 +1,11 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { configurationSchema } from '../../core/configuration.js';
 import { BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from '../../core/policy.js';
+import { RefinementDiagnosticError } from '../../core/refinement-diagnostics.js';
 import type { CodexPlanRequest, CodexPlanTransport } from './plan-refiner.js';
 
 export interface CodexCliConfig {
@@ -26,6 +27,19 @@ export const DISABLED_CODEX_TOOLS = [
 ] as const;
 
 const disabledToolArgs = (): string[] => DISABLED_CODEX_TOOLS.flatMap((name) => ['--disable', name]);
+const MAX_DIAGNOSTIC_STDERR_BYTES = 16_384;
+
+/** Inspect bounded CLI text only to select a fixed code; never expose the text. */
+function cliExitFailure(stderr: string, truncated: boolean): RefinementDiagnosticError {
+  if (truncated) return new RefinementDiagnosticError('REFINEMENT_CLI_STDERR_LIMIT', true);
+  if (/\b(?:not logged in|authentication failed|unauthorized|invalid api key|login required)\b/i.test(stderr))
+    return new RefinementDiagnosticError('REFINEMENT_CLI_AUTH_UNAVAILABLE', false);
+  if (/\b(?:model (?:not found|unavailable|unsupported)|unknown model)\b/i.test(stderr))
+    return new RefinementDiagnosticError('REFINEMENT_CLI_MODEL_UNAVAILABLE', false);
+  if (/\b(?:invalid|unsupported|rejected) (?:output )?(?:json )?schema\b|\bschema (?:is )?(?:invalid|unsupported|rejected)\b/i.test(stderr))
+    return new RefinementDiagnosticError('REFINEMENT_CLI_SCHEMA_REJECTED', false);
+  return new RefinementDiagnosticError('REFINEMENT_CLI_EXIT_NONZERO', true);
+}
 export function codexRefinementArgs(outputPath: string, schemaPath: string, model: string): string[] {
   return ['exec', '--ephemeral', '--ignore-user-config', '--strict-config',
     '--sandbox', 'read-only', ...disabledToolArgs(), '--output-schema', schemaPath,
@@ -140,31 +154,68 @@ export function verifyDisabledCodexTools(list: string): void {
 export class CodexCliPlanTransport implements CodexPlanTransport {
   constructor(private readonly config: CodexCliConfig) {}
   async refine(request: CodexPlanRequest, signal: AbortSignal): Promise<unknown> {
-    if (!this.config.authorized) throw new Error('Codex CLI use is not locally authorized.');
-    if (!this.config.executable || !this.config.workspace || !Number.isSafeInteger(this.config.timeoutMs) || this.config.timeoutMs < 1000 || this.config.timeoutMs > 240_000 || !Number.isSafeInteger(this.config.maxOutputBytes) || this.config.maxOutputBytes < 1 || this.config.maxOutputBytes > 1_000_000) throw new Error('Codex CLI bounds are invalid.');
+    if (!this.config.authorized) throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false);
+    if (!this.config.executable || !this.config.workspace || !Number.isSafeInteger(this.config.timeoutMs) || this.config.timeoutMs < 1000 || this.config.timeoutMs > 240_000 || !Number.isSafeInteger(this.config.maxOutputBytes) || this.config.maxOutputBytes < 1 || this.config.maxOutputBytes > 1_000_000) throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false);
     const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, ...(this.config.codexHome ? { CODEX_HOME: this.config.codexHome } : {}) };
-    if (!this.config.codexHome) throw new Error('Dedicated Codex identity is required.');
-    const version = (await inspectCli(this.config.executable, ['--version'], env)).trim();
-    if (version !== REVIEWED_CODEX_CLI_VERSION) throw new Error('Codex CLI version is not reviewed for tool restrictions.');
-    verifyDisabledCodexTools(await inspectCli(this.config.executable, [...disabledToolArgs(), 'features', 'list'], env));
+    if (!this.config.codexHome) throw new RefinementDiagnosticError('REFINEMENT_CLI_CONFIG_INVALID', false);
+    let version: string;
+    try { version = (await inspectCli(this.config.executable, ['--version'], env)).trim(); }
+    catch { throw new RefinementDiagnosticError('REFINEMENT_CLI_UNREVIEWED', false); }
+    if (version !== REVIEWED_CODEX_CLI_VERSION) throw new RefinementDiagnosticError('REFINEMENT_CLI_UNREVIEWED', false);
+    try { verifyDisabledCodexTools(await inspectCli(this.config.executable, [...disabledToolArgs(), 'features', 'list'], env)); }
+    catch { throw new RefinementDiagnosticError('REFINEMENT_CLI_UNREVIEWED', false); }
     const directory = await mkdtemp(join(tmpdir(), 'agentic-factory-codex-'), { encoding: 'utf8' });
     const outputPath = join(directory, 'last-message.json');
     const schemaPath = join(directory, 'output-schema.json');
     try { await writeFile(schemaPath, JSON.stringify(codexRefinementOutputSchema()), { mode: 0o600 }); }
-    catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
+    catch { await rm(directory, { recursive: true, force: true }); throw new RefinementDiagnosticError('REFINEMENT_CLI_OUTPUT_UNREADABLE', true); }
     const prompt = codexRefinementPrompt(request);
-    const child = spawn(this.config.executable, codexRefinementArgs(outputPath, schemaPath, this.config.model), { cwd: this.config.workspace, env, stdio: ['pipe', 'ignore', 'ignore'], detached: true });
+    let child;
+    try { child = spawn(this.config.executable, codexRefinementArgs(outputPath, schemaPath, this.config.model), { cwd: this.config.workspace, env, stdio: ['pipe', 'ignore', 'pipe'], detached: true }); }
+    catch {
+      await rm(directory, { recursive: true, force: true }).catch(() => { throw new RefinementDiagnosticError('REFINEMENT_TEMP_CLEANUP_FAILED', false); });
+      throw new RefinementDiagnosticError('REFINEMENT_CLI_START_FAILED', false);
+    }
+    child.stdin.on('error', () => { /* Process exit supplies the fixed diagnostic code. */ });
+    const diagnosticChunks: Buffer[] = [];
+    let diagnosticBytes = 0;
+    let diagnosticTruncated = false;
+    child.stderr.on('data', (chunk: Buffer) => {
+      const remaining = MAX_DIAGNOSTIC_STDERR_BYTES - diagnosticBytes;
+      if (remaining > 0) { diagnosticChunks.push(Buffer.from(chunk.subarray(0, remaining))); diagnosticBytes += Math.min(chunk.length, remaining); }
+      if (chunk.length > remaining) diagnosticTruncated = true;
+    });
+    child.stderr.on('error', () => { diagnosticTruncated = true; });
     let childExited = false;
     const stop = (): void => { if (!childExited && child.pid) { try { process.kill(-child.pid, 'SIGTERM'); } catch {} setTimeout(() => { if (!childExited && child.pid) { try { process.kill(-child.pid!, 'SIGKILL'); } catch {} } }, 500).unref(); } };
     const abort = (): void => stop(); signal.addEventListener('abort', abort, { once: true });
     try {
       child.stdin.end(prompt);
-      const exit = await new Promise<number>((resolve, reject) => { const timer = setTimeout(() => { stop(); reject(new Error('Codex CLI refinement timed out.')); }, this.config.timeoutMs); child.once('error', reject); child.once('exit', (code, sig) => { childExited = true; clearTimeout(timer); if (sig) reject(new Error('Codex CLI refinement was interrupted.')); else resolve(code ?? 1); }); });
-      if (exit !== 0) throw new Error('Codex CLI refinement failed.');
-      const output = await readFile(outputPath); if (output.length > this.config.maxOutputBytes) throw new Error('Codex CLI output exceeds the allowed bound.');
-      try { return normalizeCodexConfigurationOutput(JSON.parse(output.toString('utf8')) as unknown); } catch { throw new Error('Codex CLI returned invalid JSON.'); }
+      const exit = await new Promise<number>((resolve, reject) => { const timer = setTimeout(() => { stop(); reject(new RefinementDiagnosticError('REFINEMENT_CLI_TIMEOUT', true)); }, this.config.timeoutMs); child.once('error', () => reject(new RefinementDiagnosticError('REFINEMENT_CLI_START_FAILED', false))); child.once('close', (code, sig) => { childExited = true; clearTimeout(timer); if (sig) reject(new RefinementDiagnosticError('REFINEMENT_CLI_INTERRUPTED', true)); else resolve(code ?? 1); }); });
+      if (exit !== 0) throw cliExitFailure(Buffer.concat(diagnosticChunks).toString('utf8'), diagnosticTruncated);
+      let file;
+      try { file = await open(outputPath, 'r'); }
+      catch (error) { throw new RefinementDiagnosticError((error as NodeJS.ErrnoException).code === 'ENOENT' ? 'REFINEMENT_CLI_OUTPUT_MISSING' : 'REFINEMENT_CLI_OUTPUT_UNREADABLE', true); }
+      let output: Buffer;
+      try {
+        const chunks: Buffer[] = []; let total = 0;
+        while (true) {
+          const buffer = Buffer.alloc(Math.min(8192, this.config.maxOutputBytes + 1 - total));
+          const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
+          if (bytesRead === 0) break;
+          total += bytesRead;
+          if (total > this.config.maxOutputBytes) throw new RefinementDiagnosticError('REFINEMENT_CLI_OUTPUT_OVERSIZE', false);
+          chunks.push(buffer.subarray(0, bytesRead));
+        }
+        output = Buffer.concat(chunks, total);
+      } catch (error) {
+        if (error instanceof RefinementDiagnosticError) throw error;
+        throw new RefinementDiagnosticError('REFINEMENT_CLI_OUTPUT_UNREADABLE', true);
+      } finally { await file.close(); }
+      try { return normalizeCodexConfigurationOutput(JSON.parse(output.toString('utf8')) as unknown); }
+      catch { throw new RefinementDiagnosticError('REFINEMENT_OUTPUT_MALFORMED_JSON', false); }
     } finally {
-      signal.removeEventListener('abort', abort); try { child.stdin.destroy(); } catch {} await rm(directory, { recursive: true, force: false }).catch(() => { throw new Error('Codex CLI temporary cleanup could not be verified.'); });
+      signal.removeEventListener('abort', abort); try { child.stdin.destroy(); } catch {} await rm(directory, { recursive: true, force: false }).catch(() => { throw new RefinementDiagnosticError('REFINEMENT_TEMP_CLEANUP_FAILED', false); });
     }
   }
 }

@@ -78,7 +78,7 @@ export class PostgresWorkflowStore implements WorkflowStore {
       throw new Error('Plan exceeds owner-approved capabilities or execution constraints.');
     }
   }
-  async authorizeJob(scope: Scope, context: EvidenceContext): Promise<Scope> {
+  async authorizeJob(scope: Scope, context: EvidenceContext, operation: 'submit' | 'reconcile'): Promise<Scope> {
     const client = await this.pool.connect();
     try {
       await this.authorize(client, scope);
@@ -88,7 +88,9 @@ export class PostgresWorkflowStore implements WorkflowStore {
       const row = result.rows[0];
       if (!row || !isDeepStrictEqual(evidenceContext(row.state), context)) throw new Error('Synthetic job is outside the authorized context.');
       await this.assertCurrentPlan(client, scope, row.state, true);
-      if (!['running', 'awaiting-job'].includes(row.state.phase) || row.state.approval.status !== 'approved') throw new Error('Job is not authorized by an approved active Run.');
+      if (operation === 'submit' && (row.state.phase !== 'running' || row.state.approval.status !== 'approved' || row.state.job !== null)) {
+        throw new Error('Job submission requires an approved running Run.');
+      }
       return { organizationId: row.organization_id, projectId: row.project_id };
     } finally { client.release(); }
   }

@@ -30,14 +30,16 @@ const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(va
  * It executes no commands and is not the production ArtifactStore or JobExecutor.
  */
 export class SyntheticJobs implements JobExecutor {
-  constructor(private readonly directory: string, private readonly now: () => number, private readonly authorize: (context: EvidenceContext) => Promise<Scope>, private readonly neverCompletes = false) {}
-  async id(context: EvidenceContext, operationKey: string): Promise<string> { const scope = await this.authorize(context); return `synthetic-${digest({ scope, context, operationKey })}`; }
+  constructor(private readonly directory: string, private readonly now: () => number,
+    private readonly authorize: (context: EvidenceContext, operation: 'submit' | 'reconcile') => Promise<Scope>,
+    private readonly neverCompletes = false) {}
+  async id(context: EvidenceContext, operationKey: string): Promise<string> { const scope = await this.authorize(context, 'reconcile'); return `synthetic-${digest({ scope, context, operationKey })}`; }
   private path(id: string): string {
     if (!/^synthetic-[a-f0-9]{64}$/.test(id)) throw new Error('Invalid synthetic job identifier.');
     return join(this.directory, `${id}.json`);
   }
   private async read(id: string, context: EvidenceContext): Promise<JobRecord> {
-    const scope = await this.authorize(context);
+    const scope = await this.authorize(context, 'reconcile');
     const record = recordSchema.parse(JSON.parse(await readFile(this.path(id), 'utf8')));
     if (!isDeepStrictEqual(record.scope, scope)) throw new Error('Synthetic job is outside the authorized organization/project scope.');
     if (!isDeepStrictEqual(record.context, context)) throw new Error('Synthetic job is outside the authorized context.');
@@ -49,7 +51,7 @@ export class SyntheticJobs implements JobExecutor {
     await rename(`${path}.pending`, path);
   }
   async start(request: StartRequest): Promise<{ jobId: string }> {
-    const scope = await this.authorize(request.context);
+    const scope = await this.authorize(request.context, 'submit');
     const jobId = await this.id(request.context, request.idempotencyKey);
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const record: JobRecord = {

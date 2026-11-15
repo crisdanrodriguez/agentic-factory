@@ -360,6 +360,46 @@ test('MVP-01 coordinator survives repeated polling and approves only the current
   await assert.rejects(coordinator.applyFeedback({ installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueNumber: 4, senderId: 13, action: 'approve', planRevision: 'plan-old', policyRevision: config.plan.policyRevision }), /stale/);
 });
 
+test('GitHub revise is inert while reject remains revision-bound, idempotent, and sender-authorized', async () => {
+  const config = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as ProjectConfiguration;
+  config.workItem = { ...config.workItem, id: 'synthetic-feedback-item', projectId: 'demo', revision: 'r1',
+    origin: { kind: 'external-ticket', provider: 'github', reference: 'owner/demo#4' } };
+  config.plan.workItemId = config.workItem.id;
+  let run = createRun('feedback-run', config);
+  let modelCalls = 0; let creates = 0;
+  const receipts = new Map<string, Run>();
+  const workflows: WorkflowStore = {
+    async create() { creates++; throw new Error('A second Run must not be created'); },
+    async get() { return run; },
+    async apply(_scope, _id, version, eventId, command) {
+      const prior = receipts.get(eventId); if (prior) return prior;
+      assert.equal(version, run.version);
+      run = transition(run, command); receipts.set(eventId, run); return run;
+    },
+  };
+  const checkpointStore: GitHubMvpCheckpointStore = {
+    async load() { return { reference: 'owner/demo#4', workItem: run.config.workItem, plan: run.config,
+      runId: run.id, runVersion: run.version, approval: run.approval.status === 'rejected' ? 'rejected' : 'pending' }; },
+    async save() {},
+  };
+  const items: WorkItemStore = { async ingest() { throw new Error('unused'); },
+    async get() { return { workItem: config.workItem, version: 1, actor: 'fixture', sourceKind: 'github', digest: 'synthetic-source-1' }; },
+    async getByOrigin() { return undefined; }, async close() {} };
+  const plans = new RevisionBoundPlanService(workflows, { async refine() { modelCalls++; throw new Error('Model must not run'); } });
+  const poller: GitHubIssuePolling = { async pollOnce() { throw new Error('unused'); } };
+  const coordinator = new GitHubMvpCoordinator({ organizationId: 'org-1', projectId: 'demo' }, trust, poller, items, plans, workflows, checkpointStore);
+  const feedback = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueNumber: 4, senderId: 13,
+    action: 'reject' as const, planRevision: config.plan.revision, policyRevision: config.plan.policyRevision };
+  await assert.rejects(coordinator.applyFeedback({ ...feedback, action: 'revise' }), /disabled/);
+  assert.equal(modelCalls, 0); assert.equal(creates, 0); assert.equal(run.phase, 'awaiting-approval');
+  await assert.rejects(coordinator.applyFeedback({ ...feedback, senderId: 99 }), /not authorized/);
+  await assert.rejects(coordinator.applyFeedback({ ...feedback, planRevision: 'stale' }), /stale/);
+  const rejected = await coordinator.applyFeedback(feedback);
+  assert.equal(rejected.approval, 'rejected'); assert.equal(run.phase, 'terminal');
+  assert.equal((await coordinator.applyFeedback(feedback)).approval, 'rejected');
+  assert.equal(receipts.size, 1); assert.equal(modelCalls, 0); assert.equal(creates, 0);
+});
+
 test('MVP-01 does not commit the polling cursor before refinement and checkpoint persistence', async () => {
   let committed = 0;
   let refineCalls = 0;

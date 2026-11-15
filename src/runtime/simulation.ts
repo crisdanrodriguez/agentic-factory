@@ -22,7 +22,7 @@ export class SyntheticFactory {
     this.queue = new WorkflowQueue(url);
     this.store = new PostgresWorkflowStore(url, (client, scope, run) => this.queue.publish(client, scope, run));
     this.worker = new SingleWorker(this.store, this.queue);
-    this.jobs = new SyntheticJobs(directory, now, (context) => this.store.authorizeJob(this.scope, context), scenario.neverCompletes);
+    this.jobs = new SyntheticJobs(directory, now, (context, operation) => this.store.authorizeJob(this.scope, context, operation), scenario.neverCompletes);
   }
   async start(): Promise<void> { await this.queue.start(); await this.worker.start(); }
   async close(): Promise<void> { await this.worker.close(); await this.queue.close(); await this.store.close(); }

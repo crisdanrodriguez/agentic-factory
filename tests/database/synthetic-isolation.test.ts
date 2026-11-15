@@ -19,19 +19,24 @@ test('review regression: database-authorized organizations cannot retrieve overw
   const scopeB = { ...scopeA, organizationId: 'synthetic-org-b' };
   try {
     const config = validateConfiguration(JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as unknown, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);
-    const id = randomUUID(); const runA = await a.create(scopeA, id, config); const runB = await b.create(scopeB, id, config);
+    const id = randomUUID(); let runA = await a.create(scopeA, id, config); let runB = await b.create(scopeB, id, config);
+    const approval = { type: 'approve' as const, planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision };
+    runA = await a.apply(scopeA, id, runA.version, 'approve', approval);
+    runB = await b.apply(scopeB, id, runB.version, 'approve', approval);
+    runA = await a.apply(scopeA, id, runA.version, 'start', { type: 'start' });
+    runB = await b.apply(scopeB, id, runB.version, 'start', { type: 'start' });
     const context = evidenceContext(runA); assert.deepEqual(context, evidenceContext(runB));
-    const jobsA = new SyntheticJobs(directory, () => 0, (context) => a.authorizeJob(scopeA, context));
-    const jobsB = new SyntheticJobs(directory, () => 2000, (context) => b.authorizeJob(scopeB, context));
+    const jobsA = new SyntheticJobs(directory, () => 0, (context, operation) => a.authorizeJob(scopeA, context, operation));
+    const jobsB = new SyntheticJobs(directory, () => 2000, (context, operation) => b.authorizeJob(scopeB, context, operation));
     const request = { context, idempotencyKey: 'identical-operation', command: ['synthetic-no-execution'], authorizedEnvironment: context.environmentFingerprint, maxDurationSeconds: 300, maxMemoryMb: 128 };
     const jobA = await jobsA.start(request); const original = await readFile(join(directory, `${jobA.jobId}.json`), 'utf8');
     const jobB = await jobsB.start(request); assert.notEqual(jobA.jobId, jobB.jobId);
-    for (const jobs of [jobsB, new SyntheticJobs(directory, () => 5000, (context) => b.authorizeJob(scopeB, context))]) {
+    for (const jobs of [jobsB, new SyntheticJobs(directory, () => 5000, (context, operation) => b.authorizeJob(scopeB, context, operation))]) {
       await assert.rejects(jobs.inspect(jobA.jobId, context), /organization\/project scope/);
       await assert.rejects(jobs.cancel(jobA.jobId, context), /organization\/project scope/);
       await jobs.start(request);
     }
-    const forged = new SyntheticJobs(directory, () => 0, (context) => b.authorizeJob(scopeA, context));
+    const forged = new SyntheticJobs(directory, () => 0, (context, operation) => b.authorizeJob(scopeA, context, operation));
     await assert.rejects(forged.start(request), /not authorized/);
     await assert.rejects(forged.inspect(jobA.jobId, context), /not authorized/);
     await assert.rejects(jobsA.inspect(jobA.jobId, { ...context, projectId: 'forged-project' }), /authorized context/);

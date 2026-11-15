@@ -45,7 +45,8 @@ test('CLI rejects disabled policy and never executes configured commands', () =>
     const config = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as { profile: { checks: { command: string[] }[] }; policy: { requireEvidence: boolean } };
     config.profile.checks[0]!.command = ['this-program-must-never-be-executed'];
     const path = join(directory, 'input.json'); writeFileSync(path, JSON.stringify(config));
-    assert.equal(run('validate', path).status, 0);
+    const unsafe = run('validate', path);
+    assert.equal(unsafe.status, 1); assert.match(unsafe.stderr, /trusted command registry/);
     config.policy.requireEvidence = false; writeFileSync(path, JSON.stringify(config));
     const result = run('validate', path);
     assert.equal(result.status, 1); assert.match(result.stderr, /cannot disable/);

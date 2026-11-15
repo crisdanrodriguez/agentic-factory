@@ -49,13 +49,12 @@ test('rejects making a mandatory verification optional', () => {
   const config = fixture(); config.profile.checks[0]!.required = false;
   assert.throws(() => validate(config), /required profile verification/);
 });
-test('accepts stricter project limits and additional required checks', () => {
+test('accepts stricter project limits but rejects unreviewed additional checks', () => {
   const config = fixture(); config.plan.budget.maxTechnicalAttempts = 1;
+  assert.doesNotThrow(() => validate(config));
   config.policy.requiredChecks.push('extra-check');
   config.profile.checks.push({ id: 'extra-check', layer: 'software', required: true, command: ['python', 'extra_check.py'] });
-  assert.doesNotThrow(() => validate(config));
-  const { context, results } = evidence(config);
-  assert.throws(() => assertRequiredVerification(config, context, results.slice(0, 1)), /extra-check/);
+  assert.throws(() => validate(config), /outside trusted policy/);
 });
 for (const key of Object.keys(BOOTSTRAP_POLICY.limits) as (keyof typeof BOOTSTRAP_POLICY.limits)[]) {
   test(`rejects raising the global ${key} limit`, () => {

@@ -51,11 +51,19 @@ export class SyntheticJobs implements JobExecutor {
     await rename(`${path}.pending`, path);
   }
   async start(request: StartRequest): Promise<{ jobId: string }> {
-    const scope = await this.authorize(request.context, 'submit');
     const jobId = await this.id(request.context, request.idempotencyKey);
+    const requestDigest = digest(request);
+    try {
+      const existing = await this.read(jobId, request.context);
+      if (existing.requestDigest !== requestDigest) throw new Error('Synthetic idempotency key was reused with different content.');
+      return { jobId };
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+    }
+    const scope = await this.authorize(request.context, 'submit');
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const record: JobRecord = {
-      label: 'synthetic-simulation-only', scope, context: request.context, requestDigest: digest(request), status: 'running',
+      label: 'synthetic-simulation-only', scope, context: request.context, requestDigest, status: 'running',
       startedAt: this.now(), readyAt: this.now() + (this.neverCompletes ? request.maxDurationSeconds * 1000 + 1 : 1000),
       deadline: this.now() + request.maxDurationSeconds * 1000,
     };

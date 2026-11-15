@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { Pool } from 'pg';
 import { validateConfiguration } from '../../src/core/configuration.js';
 import { BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG } from '../../src/core/policy.js';
 import { PostgresWorkflowStore, type ExternalPlanAuthorization } from '../../src/adapters/postgres/workflow-store.js';
 import { PostgresWorkItemStore } from '../../src/adapters/postgres/work-item-store.js';
+import { SyntheticJobs } from '../../src/adapters/synthetic/execution.js';
 import { evidenceContext, type Run } from '../../src/core/workflow.js';
 
 const url = (role = 'af_app') => `postgres://${role}:synthetic-local-runtime-only@127.0.0.1:55432/agentic_factory_local`;
@@ -37,6 +41,11 @@ test('AF-004 gates approval and start on the current durable GitHub WorkItem sna
     const wrongId = randomUUID(); await workflows.create(scope, wrongId, wrong);
     await assert.rejects(workflows.apply(scope, wrongId, 0, 'approve', { type: 'approve', planRevision: wrong.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision }), /stale/);
     const id = randomUUID(); await workflows.create(scope, id, config);
+    const unauthorizedRevision = structuredClone(config);
+    unauthorizedRevision.plan.revision = '2'; unauthorizedRevision.plan.sourceSnapshot = 'unapproved-snapshot';
+    unauthorizedRevision.workItem.objective = 'Unapproved replacement objective.';
+    await assert.rejects(workflows.apply(scope, id, 0, 'external-revise', { type: 'revise', config: unauthorizedRevision }), /separate authorized workflow/);
+    assert.equal((await workflows.get(scope, id)).version, 0);
     const approval = { type: 'approve' as const, planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision };
     const approved = await workflows.apply(scope, id, 0, 'approve', approval);
     assert.equal(approved.phase, 'ready');
@@ -54,6 +63,72 @@ test('AF-004 gates approval and start on the current durable GitHub WorkItem sna
     await assert.rejects(workflows.apply(scope, id, approved.version, 'start', { type: 'start' }), /stale/);
     assert.equal((await workflows.get(scope, id)).phase, 'ready');
   } finally { await items.close(); await workflows?.close(); }
+});
+
+test('AF-004 reconciles existing scoped jobs after execution revocation, source change, and policy change', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'af-plan-recovery-'));
+  const items = new PostgresWorkItemStore(url());
+  const reference = `owner/demo#${randomUUID()}`;
+  const source = (objective: string) => ({ kind: 'github' as const,
+    bytes: Buffer.from(JSON.stringify({ objective, context: 'Synthetic recovery fixture.' })),
+    origin: { provider: 'github', reference, updatedAt: '2026-10-24T00:00:00Z' } });
+  let store: PostgresWorkflowStore | undefined;
+  let revoked: PostgresWorkflowStore | undefined;
+  let other: PostgresWorkflowStore | undefined;
+  try {
+    const intake = await items.ingest(scope, { kind: 'create', key: randomUUID() }, source('Recovery objective'));
+    const config = fixture(); config.workItem = intake.workItem;
+    config.plan.workItemId = intake.workItem.id; config.plan.sourceSnapshot = intake.digest;
+    const authorization: ExternalPlanAuthorization = { scope, workItemId: intake.workItem.id, sourceSnapshot: intake.digest,
+      profileId: config.profile.id, capabilities: [...config.profile.requiredCapabilities],
+      checks: config.profile.checks.map((check) => check.id), deliverables: [...config.profile.deliverables],
+      limits: { ...config.plan.budget }, allowExecution: true };
+    store = new PostgresWorkflowStore(url(), undefined, [authorization]);
+    const id = randomUUID(); let run = await store.create(scope, id, config);
+    run = await store.apply(scope, id, run.version, 'approve',
+      { type: 'approve', planRevision: config.plan.revision, policyRevision: BOOTSTRAP_POLICY.revision });
+    run = await store.apply(scope, id, run.version, 'start', { type: 'start' });
+    const context = evidenceContext(run);
+    const activeJobs = new SyntheticJobs(directory, () => 0, (value, operation) => store!.authorizeJob(scope, value, operation));
+    const request = { context, idempotencyKey: 'existing-submission', command: ['synthetic-no-execution'],
+      authorizedEnvironment: context.environmentFingerprint, maxDurationSeconds: 300, maxMemoryMb: 128 };
+    const { jobId } = await activeJobs.start(request);
+    run = await store.apply(scope, id, run.version, 'job-started', { type: 'job-started', jobId, operationKey: request.idempotencyKey });
+    revoked = new PostgresWorkflowStore(url(), undefined, [{ ...authorization, allowExecution: false }]);
+    const recovery = new SyntheticJobs(directory, () => 0, (value, operation) => revoked!.authorizeJob(scope, value, operation));
+    await assert.rejects(recovery.start({ ...request, idempotencyKey: 'new-submission' }), /execution constraints/);
+    assert.equal((await recovery.start(request)).jobId, jobId);
+    assert.equal((await recovery.inspect(jobId, context)).status, 'running');
+    await items.ingest(scope, { kind: 'revise', key: randomUUID(), id: intake.workItem.id, expectedRevision: 'r1' }, source('Superseded objective'));
+    await assert.rejects(activeJobs.start({ ...request, idempotencyKey: 'stale-submission' }), /stale/);
+    assert.equal((await recovery.inspect(jobId, context)).status, 'running');
+    run = await store.apply(scope, id, run.version, 'cancel', { type: 'request-cancellation' });
+    assert.equal(run.cancellationRequested, true);
+    await recovery.cancel(jobId, context);
+    assert.equal((await recovery.inspect(jobId, context)).status, 'cancelled');
+    await store.pool.query(`UPDATE factory.runs SET state=jsonb_set(state,'{config,plan,policyRevision}',to_jsonb($4::text))
+      WHERE organization_id=$1 AND project_id=$2 AND id=$3`,
+    [scope.organizationId, scope.projectId, id, 'bootstrap-policy-1']);
+    const legacyContext = { ...context, policyRevision: 'bootstrap-policy-1' };
+    const legacyRequest = { ...request, context: legacyContext, idempotencyKey: 'legacy-existing' };
+    const fixtureJobs = new SyntheticJobs(directory, () => 0, async () => scope);
+    const legacyJob = await fixtureJobs.start(legacyRequest);
+    const legacyRecovery = new SyntheticJobs(directory, () => 0, (value, operation) => store!.authorizeJob(scope, value, operation));
+    await assert.rejects(legacyRecovery.start({ ...legacyRequest, idempotencyKey: 'legacy-submission' }), /policy revision/);
+    assert.equal((await store.transaction((client) => store!.getForUpdate(client, scope, id))).id, id);
+    assert.equal((await legacyRecovery.inspect(legacyJob.jobId, legacyContext)).status, 'running');
+    await legacyRecovery.cancel(legacyJob.jobId, legacyContext);
+    assert.equal((await legacyRecovery.inspect(legacyJob.jobId, legacyContext)).status, 'cancelled');
+    other = new PostgresWorkflowStore(url('af_other'));
+    await assert.rejects(other.authorizeJob(scope, context, 'reconcile'), /not authorized/);
+    await assert.rejects(other.authorizeJob({ ...scope, organizationId: 'synthetic-org-b' }, context, 'reconcile'), /authorized context/);
+    await assert.rejects(store.authorizeJob({ ...scope, projectId: 'synthetic-ml-project' }, context, 'reconcile'), /authorized context/);
+    await assert.rejects(recovery.inspect(jobId, { ...context, projectId: 'synthetic-ml-project' }), /authorized context/);
+    await assert.rejects(store.authorizeJob(scope, context, 'unexpected' as 'submit'), /Unknown job authorization operation/);
+  } finally {
+    await Promise.all([items.close(), store?.close(), revoked?.close(), other?.close()]);
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 function fixture() { return validateConfiguration(JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as unknown, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG); }
 

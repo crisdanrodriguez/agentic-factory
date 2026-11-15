@@ -62,3 +62,18 @@ test('exact WorkItem content and durable source digest are required', () => {
   assert.throws(() => assertPlanSafety(config, { workItem: { ...config.workItem, context: 'Changed source.' }, digest: config.plan.sourceSnapshot }), /stale/);
   assert.throws(() => assertPlanSafety(config, { workItem: config.workItem, digest: 'different-digest' }), /stale/);
 });
+
+test('direct revision cannot replace an external WorkItem or introduce an external origin', () => {
+  const external = fixture();
+  external.workItem.origin = { kind: 'external-ticket', provider: 'github', reference: 'owner/demo#1' };
+  const pending = createRun('external-revision-run', external);
+  const replacement = structuredClone(external);
+  replacement.plan.revision = '2';
+  replacement.plan.sourceSnapshot = 'different-source';
+  replacement.workItem.objective = 'Different objective.';
+  replacement.workItem.revision = 'r2';
+  assert.throws(() => transition(pending, { type: 'revise', config: replacement }), /separate authorized workflow/);
+  assert.equal(pending.config.workItem.revision, external.workItem.revision);
+  const local = createRun('local-revision-run', fixture());
+  assert.throws(() => transition(local, { type: 'revise', config: replacement }), /separate authorized workflow/);
+});

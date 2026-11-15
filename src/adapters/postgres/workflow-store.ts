@@ -79,6 +79,7 @@ export class PostgresWorkflowStore implements WorkflowStore {
     }
   }
   async authorizeJob(scope: Scope, context: EvidenceContext, operation: 'submit' | 'reconcile'): Promise<Scope> {
+    if (operation !== 'submit' && operation !== 'reconcile') throw new Error('Unknown job authorization operation.');
     const client = await this.pool.connect();
     try {
       await this.authorize(client, scope);
@@ -87,9 +88,11 @@ export class PostgresWorkflowStore implements WorkflowStore {
         [scope.organizationId, scope.projectId, context.runId]);
       const row = result.rows[0];
       if (!row || !isDeepStrictEqual(evidenceContext(row.state), context)) throw new Error('Synthetic job is outside the authorized context.');
-      await this.assertCurrentPlan(client, scope, row.state, true);
-      if (operation === 'submit' && (row.state.phase !== 'running' || row.state.approval.status !== 'approved' || row.state.job !== null)) {
-        throw new Error('Job submission requires an approved running Run.');
+      if (operation === 'submit') {
+        await this.assertCurrentPlan(client, scope, row.state, true);
+        if (row.state.phase !== 'running' || row.state.approval.status !== 'approved' || row.state.job !== null || row.state.cancellationRequested) {
+          throw new Error('Job submission requires an approved running Run.');
+        }
       }
       return { organizationId: row.organization_id, projectId: row.project_id };
     } finally { client.release(); }
@@ -127,9 +130,7 @@ export class PostgresWorkflowStore implements WorkflowStore {
     await this.authorize(client, scope);
     const result = await client.query<{ state: Run }>('SELECT state FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE', [scope.organizationId, scope.projectId, id]);
     if (!result.rows[0]) throw new Error('Run is unavailable in the authorized scope.');
-    const run = result.rows[0].state;
-    if (['ready', 'running', 'awaiting-job'].includes(run.phase)) await this.assertCurrentPlan(client, scope, run, true);
-    return run;
+    return result.rows[0].state;
   }
   async apply(scope: Scope, id: string, expectedVersion: number, eventId: string, command: Command): Promise<Run> {
     return this.transaction((client) => this.applyInTransaction(client, scope, id, expectedVersion, eventId, command));

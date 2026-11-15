@@ -52,6 +52,8 @@ export function transition(current: Run, command: Command): Run {
   const require = (condition: boolean, message = 'Invalid workflow transition.'): void => { if (!condition) throw new Error(message); };
   if (command.type === 'approve' || command.type === 'start' || command.type === 'job-started') assertPlanSafety(run.config);
   if (command.type === 'revise') {
+    require(run.config.workItem.origin.kind !== 'external-ticket' && command.config.workItem.origin.kind !== 'external-ticket',
+      'External plan revision requires a separate authorized workflow.');
     require(!['running', 'awaiting-job'].includes(run.phase) && !run.cancellationRequested, 'Cancel active work before revising it.');
     const config = validateConfiguration(command.config, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);
     require(config.plan.revision !== run.config.plan.revision, 'A changed plan requires a new revision.');

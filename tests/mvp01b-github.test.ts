@@ -156,6 +156,22 @@ test('MVP-01B refinement rejects a changed WorkItem revision before model use', 
   assert.equal(modelCalls, 0); assert.equal(superseded, 1);
 });
 
+test('MVP-01B invalid refinement output cannot create a Run or complete its intent', async () => {
+  const claim = { scope, workItemId: 'w1', sourceRevision: 'r1', originProvider: 'github', originReference: 'owner/demo#4', status: 'running' as const, attemptCount: 1, maxAttempts: 3, nextAttemptAt: new Date().toISOString(), cancellationRequested: false, leaseToken: 'lease-invalid' } satisfies RefinementClaim;
+  let completions = 0; let creates = 0; const failures: string[] = [];
+  const intents: RefinementIntentStore & { completeRefinement(): Promise<void> } = {
+    async claimDue() { return claim; }, async retry(_claim, code) { failures.push(code); },
+    async fail(_claim, code) { failures.push(code); }, async cancel() {}, async supersedeOlder() {},
+    async completeRefinement() { completions++; },
+  };
+  const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
+  const workflows: WorkflowStore = { async create() { creates++; throw new Error('Run must not be created'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const worker = new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { return { invalid: true } as unknown as ProjectConfiguration; } }), workflows, 'invalid-output-worker');
+  await worker.once(new AbortController().signal);
+  assert.equal(creates, 0); assert.equal(completions, 0);
+  assert.deepEqual(failures, ['REFINEMENT_PERMANENT']);
+});
+
 test('MVP-01B reconciles a committed workflow after the worker loses commit confirmation', async () => {
   const claim = { scope, workItemId: 'w1', sourceRevision: 'r1', originProvider: 'github', originReference: 'owner/demo#4', status: 'running' as const, attemptCount: 2, maxAttempts: 3, nextAttemptAt: new Date().toISOString(), cancellationRequested: false, leaseToken: 'lease-2' } satisfies RefinementClaim;
   let reconciled = 0; let creates = 0; let modelCalls = 0;

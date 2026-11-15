@@ -91,16 +91,16 @@ test('MVP-01 Codex refinement requires explicit authorization and a bounded call
   let calls = 0;
   const transport = { async refine() { calls++; return config; } };
   const denied = new AuthorizedCodexPlanRefiner(transport, { authorized: false, model: 'codex-local', maxCalls: 1, maxOutputBytes: 10000 });
-  await assert.rejects(denied.refine({ workItem: config.workItem, sourceRevision: config.workItem.revision }), /not locally authorized/);
+  await assert.rejects(denied.refine({ workItem: config.workItem, sourceRevision: config.workItem.revision }), /REFINEMENT_CLI_CONFIG_INVALID/);
   const allowed = new AuthorizedCodexPlanRefiner(transport, { authorized: true, model: 'codex-local', maxCalls: 1, maxOutputBytes: 10000 });
   await allowed.refine({ workItem: config.workItem, sourceRevision: config.workItem.revision });
-  await assert.rejects(allowed.refine({ workItem: config.workItem, sourceRevision: config.workItem.revision }), /budget exhausted/);
+  await assert.rejects(allowed.refine({ workItem: config.workItem, sourceRevision: config.workItem.revision }), /REFINEMENT_CLI_CONFIG_INVALID/);
   assert.equal(calls, 1);
 });
 
 test('MVP-01 Codex CLI transport is disabled without explicit local authorization', async () => {
   const transport = new CodexCliPlanTransport({ executable: '/does/not/run', workspace: '/private/tmp', model: 'codex-local', timeoutMs: 1000, maxOutputBytes: 1000, authorized: false });
-  await assert.rejects(transport.refine({ workItem: record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }).workItem, sourceRevision: 'r1', model: 'codex-local', maxOutputBytes: 1000 }, new AbortController().signal), /not locally authorized/);
+  await assert.rejects(transport.refine({ workItem: record({ kind: 'github', bytes: Buffer.from('{}'), origin: { provider: 'github', reference: 'owner/demo#4' } }).workItem, sourceRevision: 'r1', model: 'codex-local', maxOutputBytes: 1000 }, new AbortController().signal), /REFINEMENT_CLI_CONFIG_INVALID/);
 });
 
 test('MVP-01 Codex CLI refinement pins a dedicated read-only, tool-free session', () => {
@@ -124,7 +124,7 @@ test('MVP-01 Codex CLI rejects an unreviewed binary before model invocation and 
   chmodSync(executable, 0o700);
   try {
     const transport = new CodexCliPlanTransport({ executable, workspace: directory, model: 'gpt-6-sol', timeoutMs: 1000, maxOutputBytes: 1000, authorized: true, codexHome: join(directory, 'dedicated-home') });
-    await assert.rejects(transport.refine({ workItem: record({ kind: 'cli', bytes: Buffer.from('{}') }).workItem, sourceRevision: 'r1', model: 'gpt-6-sol', maxOutputBytes: 1000 }, new AbortController().signal), /version is not reviewed/);
+    await assert.rejects(transport.refine({ workItem: record({ kind: 'cli', bytes: Buffer.from('{}') }).workItem, sourceRevision: 'r1', model: 'gpt-6-sol', maxOutputBytes: 1000 }, new AbortController().signal), /REFINEMENT_CLI_UNREVIEWED/);
     assert.equal(readFileSync(marker, 'utf8'), join(directory, 'dedicated-home'));
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
@@ -465,7 +465,7 @@ test('MVP-01 refinement rejects altered WorkItem content and stale source snapsh
   const workflows: WorkflowStore = { async create() { throw new Error('must not create a Run'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
   const altered = structuredClone(base); altered.workItem.context = 'Changed by model.';
   const changedItem = new RevisionBoundPlanService(workflows, { async refine() { return altered; } });
-  await assert.rejects(changedItem.refine(scope, base.workItem, base.workItem.revision), /exact WorkItem/);
+  await assert.rejects(changedItem.refine(scope, base.workItem, base.workItem.revision), /REFINEMENT_WORK_ITEM_MISMATCH/);
   const staleSnapshot = new RevisionBoundPlanService(workflows, { async refine() { return base; } });
-  await assert.rejects(staleSnapshot.refine(scope, base.workItem, base.workItem.revision, undefined, 'durable-digest'), /source snapshot/);
+  await assert.rejects(staleSnapshot.refine(scope, base.workItem, base.workItem.revision, undefined, 'durable-digest'), /REFINEMENT_SOURCE_SNAPSHOT_MISMATCH/);
 });

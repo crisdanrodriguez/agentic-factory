@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { GitHubIssueIntake, validateTestbedIssueOneBatch } from '../src/core/github-intake.js';
 import { GitHubIssuePoller } from '../src/adapters/github/issue-poller.js';
 import { GitHubMvpCoordinator } from '../src/core/github-mvp.js';
-import { GitHubRefinementWorker } from '../src/runtime/github-refinement-worker.js';
+import { GitHubRefinementWorker, refinementOutcomeExitCode } from '../src/runtime/github-refinement-worker.js';
 import { RevisionBoundPlanService } from '../src/core/plan-approval.js';
 import type { IntakeRecord } from '../src/core/intake.js';
 import type { WorkItem } from '../src/core/contracts.js';
@@ -12,7 +12,7 @@ import type { GitHubIssueEvent } from '../src/ports/github.js';
 import type { RefinementClaim, RefinementIntentStore } from '../src/ports/refinement-intent.js';
 import type { WorkflowStore } from '../src/ports/workflow-store.js';
 import type { ProjectConfiguration } from '../src/core/configuration.js';
-import type { Run, Scope } from '../src/core/workflow.js';
+import { createRun, type Run, type Scope } from '../src/core/workflow.js';
 import { readFileSync } from 'node:fs';
 
 const issue = { installationId: 7, repositoryId: 9, repositoryFullName: 'owner/demo', issueId: 11, issueNumber: 4, senderId: 13, senderLogin: 'owner', title: 'Durable intake', body: 'Record only.', action: 'opened' as const, updatedAt: '2026-10-24T00:00:00Z' };
@@ -140,7 +140,8 @@ test('MVP-01B refinement retries a transient failure and succeeds on a later cla
   let calls = 0; const base = config(); base.workItem = item().workItem; base.plan.workItemId = 'w1'; base.plan.revision = 'plan-r1'; base.plan.sourceSnapshot = item().digest;
   const plans = new RevisionBoundPlanService(workflows, { async refine() { if (calls++ === 0) throw new Error('temporary provider outage'); return base; } });
   const worker = new GitHubRefinementWorker(scope, intents, items, plans, workflows, 'test-worker');
-  await worker.once(new AbortController().signal); assert.deepEqual(retries, ['REFINEMENT_RETRYABLE']);
+  assert.deepEqual(await worker.once(new AbortController().signal), { status: 'failed-retryable', diagnosticCode: 'REFINEMENT_OPERATION_UNKNOWN' });
+  assert.deepEqual(retries, ['REFINEMENT_OPERATION_UNKNOWN']);
   await worker.once(new AbortController().signal);
   assert.equal(runs.size, 1);
 });
@@ -169,7 +170,70 @@ test('MVP-01B invalid refinement output cannot create a Run or complete its inte
   const worker = new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { return { invalid: true } as unknown as ProjectConfiguration; } }), workflows, 'invalid-output-worker');
   await worker.once(new AbortController().signal);
   assert.equal(creates, 0); assert.equal(completions, 0);
-  assert.deepEqual(failures, ['REFINEMENT_PERMANENT']);
+  assert.deepEqual(failures, ['REFINEMENT_OUTPUT_SCHEMA_INVALID']);
+});
+
+test('MVP-01B stale snapshot is permanent and cannot create a Run or complete its intent', async () => {
+  const claim = { scope, workItemId: 'w1', sourceRevision: 'r1', originProvider: 'github', originReference: 'owner/demo#4', status: 'running' as const, attemptCount: 1, maxAttempts: 3, nextAttemptAt: new Date().toISOString(), cancellationRequested: false, leaseToken: 'lease-snapshot' } satisfies RefinementClaim;
+  let completions = 0; let creates = 0; const failures: string[] = [];
+  const intents: RefinementIntentStore & { completeRefinement(): Promise<void> } = {
+    async claimDue() { return claim; }, async retry() { throw new Error('must not retry'); },
+    async fail(_claim, code) { failures.push(code); return 'failed'; }, async cancel() {}, async supersedeOlder() {},
+    async completeRefinement() { completions++; },
+  };
+  const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
+  const workflows: WorkflowStore = { async create() { creates++; throw new Error('must not create'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const proposal = config(); proposal.workItem = item().workItem; proposal.plan.workItemId = 'w1';
+  const outcome = await new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { return proposal; } }), workflows, 'snapshot-worker').once(new AbortController().signal);
+  assert.deepEqual(outcome, { status: 'failed-permanent', diagnosticCode: 'REFINEMENT_SOURCE_SNAPSHOT_MISMATCH' });
+  assert.equal(refinementOutcomeExitCode(outcome), 1);
+  assert.deepEqual(failures, ['REFINEMENT_SOURCE_SNAPSHOT_MISMATCH']);
+  assert.equal(creates, 0); assert.equal(completions, 0);
+});
+
+test('MVP-01B successful fake refinement reports success only after durable completion', async () => {
+  const claim = { scope, workItemId: 'w1', sourceRevision: 'r1', originProvider: 'github', originReference: 'owner/demo#4', status: 'running' as const, attemptCount: 1, maxAttempts: 3, nextAttemptAt: new Date().toISOString(), cancellationRequested: false, leaseToken: 'lease-success' } satisfies RefinementClaim;
+  const stored = new Map<string, Run>(); let status = 'running';
+  const intents: RefinementIntentStore & { completeRefinement(_claim: RefinementClaim, runId: string, proposal: ProjectConfiguration): Promise<void> } = {
+    async claimDue() { return claim; }, async retry() { throw new Error('unexpected retry'); }, async fail() { throw new Error('unexpected failure'); }, async cancel() {}, async supersedeOlder() {},
+    async completeRefinement(_claim, runId, proposal) { stored.set(runId, createRun(runId, proposal)); status = 'succeeded'; },
+  };
+  const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
+  const workflows: WorkflowStore = { async create() { throw new Error('non-atomic create'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const proposal = config(); proposal.workItem = item().workItem; proposal.plan.workItemId = 'w1'; proposal.plan.sourceSnapshot = item().digest;
+  const outcome = await new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { return proposal; } }), workflows, 'success-worker').once(new AbortController().signal);
+  assert.deepEqual(outcome, { status: 'succeeded', runId: 'w1-r1' });
+  assert.equal(refinementOutcomeExitCode(outcome), 0);
+  assert.equal(stored.size, 1); assert.equal(status, 'succeeded');
+  assert.equal(stored.get('w1-r1')?.phase, 'awaiting-approval');
+  assert.equal(stored.get('w1-r1')?.approval.status, 'pending');
+});
+
+test('MVP-01B persistence failure is retryable without leaking database text', async () => {
+  const claim = { scope, workItemId: 'w1', sourceRevision: 'r1', originProvider: 'github', originReference: 'owner/demo#4', status: 'running' as const, attemptCount: 1, maxAttempts: 3, nextAttemptAt: new Date().toISOString(), cancellationRequested: false, leaseToken: 'lease-persistence' } satisfies RefinementClaim;
+  const failures: string[] = [];
+  const intents: RefinementIntentStore & { completeRefinement(): Promise<void> } = {
+    async claimDue() { return claim; }, async retry(_claim, code) { failures.push(code); return 'pending'; }, async fail() { throw new Error('must not fail permanently'); }, async cancel() {}, async supersedeOlder() {},
+    async completeRefinement() { throw new Error('SYNTHETIC_PRIVATE_DATABASE_CONTENT'); },
+  };
+  const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
+  const workflows: WorkflowStore = { async create() { throw new Error('unused'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const proposal = config(); proposal.workItem = item().workItem; proposal.plan.workItemId = 'w1'; proposal.plan.sourceSnapshot = item().digest;
+  const outcome = await new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { return proposal; } }), workflows, 'persistence-worker').once(new AbortController().signal);
+  assert.deepEqual(outcome, { status: 'failed-retryable', diagnosticCode: 'REFINEMENT_PERSISTENCE_FAILED' });
+  assert.equal(JSON.stringify(outcome).includes('SYNTHETIC_PRIVATE_DATABASE_CONTENT'), false);
+  assert.deepEqual(failures, ['REFINEMENT_PERSISTENCE_FAILED']);
+});
+
+test('MVP-01B no due intent and unresolved outcomes cannot report success', async () => {
+  const intents: RefinementIntentStore = { async claimDue() { return undefined; }, async retry() {}, async fail() {}, async cancel() {}, async supersedeOlder() {} };
+  const items: WorkItemStore = { async close() {}, async get() { throw new Error('unused'); }, async getByOrigin() { return undefined; }, async ingest() { throw new Error('unused'); } };
+  const workflows: WorkflowStore = { async create() { throw new Error('unused'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const outcome = await new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { throw new Error('unused'); } }), workflows).once(new AbortController().signal);
+  assert.deepEqual(outcome, { status: 'no-due-intent' });
+  assert.equal(refinementOutcomeExitCode(outcome), 3);
+  assert.equal(refinementOutcomeExitCode({ status: 'unresolved', diagnosticCode: 'REFINEMENT_OPERATION_UNKNOWN' }), 2);
+  assert.equal(refinementOutcomeExitCode({ status: 'interrupted', reason: 'cancelled' }), 2);
 });
 
 test('MVP-01B reconciles a committed workflow after the worker loses commit confirmation', async () => {
@@ -205,6 +269,8 @@ test('MVP-01B cancellation and supersession cannot be resurrected by retry handl
   const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
   const workflows: WorkflowStore = { async create() { throw new Error('unused'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
   const worker = new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { modelCalls++; throw new Error('cancelled provider'); } }), workflows, 'cancelled-worker');
-  await worker.once(new AbortController().signal);
+  const cancelledOutcome = await worker.once(new AbortController().signal);
   assert.equal(cancelled, 1); assert.equal(modelCalls, 0);
+  assert.deepEqual(cancelledOutcome, { status: 'interrupted', reason: 'cancelled' });
+  assert.equal(refinementOutcomeExitCode(cancelledOutcome), 2);
 });

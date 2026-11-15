@@ -151,6 +151,7 @@ test('MVP-01B PostgreSQL exhausts an expired final lease and claims other due wo
     assert.ok(next);
     assert.equal(next?.workItemId, eligible.workItem.id);
     assert.equal(next.attemptCount, 1);
+    assert.equal(await intents.retry(next, 'SYNTHETIC_FAILURE', 60), 'pending');
     const row = await intents.pool.query<{ status: string; attempt_count: number; lease_token: string | null; lease_expires_at: Date | null; last_error: string | null }>(`SELECT status,attempt_count,lease_token,lease_expires_at,last_error
       FROM factory.refinement_intents WHERE organization_id=$1 AND project_id=$2 AND work_item_id=$3 AND source_revision='r1'`,
     [scope.organizationId, scope.projectId, exhausted.workItem.id]);

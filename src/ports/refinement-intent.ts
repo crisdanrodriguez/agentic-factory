@@ -10,8 +10,8 @@ export type RefinementClaim = RefinementIntent & { leaseToken: string };
 
 export interface RefinementIntentStore {
   claimDue(scope: Scope, workerId: string, leaseSeconds: number): Promise<RefinementClaim | undefined>;
-  retry(claim: RefinementClaim, errorCode: string, delaySeconds: number): Promise<void>;
-  fail(claim: RefinementClaim, errorCode: string): Promise<void>;
+  retry(claim: RefinementClaim, errorCode: string, delaySeconds: number): Promise<void | RefinementIntentStatus>;
+  fail(claim: RefinementClaim, errorCode: string): Promise<void | RefinementIntentStatus>;
   cancel(scope: Scope, workItemId: string, sourceRevision: string): Promise<void>;
   supersedeOlder(scope: Scope, workItemId: string, currentRevision: string): Promise<void>;
   completeExisting?(claim: RefinementClaim, planRunId: string): Promise<void>;

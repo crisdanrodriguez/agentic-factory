@@ -137,7 +137,7 @@ test('MVP-01B refinement retries a transient failure and succeeds on a later cla
   const intents: RefinementIntentStore = { async claimDue() { if (claims++ < 2) return claim; return undefined; }, async retry(_claim, code) { retries.push(code); }, async fail() {}, async cancel() {}, async supersedeOlder() {} };
   const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
   const runs = new Map<string, Run>(); const workflows: WorkflowStore = { async create(_scope, id, cfg) { const run = { id, version: 0, config: cfg, phase: 'awaiting-approval', outcome: { execution: 'pending', verification: 'unverified', objective: 'not-assessed', humanDecision: 'pending' }, approval: { status: 'pending', planRevision: cfg.plan.revision, policyRevision: cfg.plan.policyRevision }, step: { attempts: 0, variants: 0, generation: 0 }, job: null, evidence: [], artifactReferences: [], cancellationRequested: false, simulation: true } as Run; runs.set(id, run); return run; }, async get(_scope, id) { return runs.get(id)!; }, async apply() { throw new Error('unused'); } };
-  let calls = 0; const base = config(); base.workItem = item().workItem; base.plan.workItemId = 'w1'; base.plan.revision = 'plan-r1';
+  let calls = 0; const base = config(); base.workItem = item().workItem; base.plan.workItemId = 'w1'; base.plan.revision = 'plan-r1'; base.plan.sourceSnapshot = item().digest;
   const plans = new RevisionBoundPlanService(workflows, { async refine() { if (calls++ === 0) throw new Error('temporary provider outage'); return base; } });
   const worker = new GitHubRefinementWorker(scope, intents, items, plans, workflows, 'test-worker');
   await worker.once(new AbortController().signal); assert.deepEqual(retries, ['REFINEMENT_RETRYABLE']);
@@ -154,6 +154,22 @@ test('MVP-01B refinement rejects a changed WorkItem revision before model use', 
   const plans = new RevisionBoundPlanService(workflows, { async refine() { modelCalls++; return config(); } });
   await new GitHubRefinementWorker(scope, intents, items, plans, workflows, 'test-worker').once(new AbortController().signal);
   assert.equal(modelCalls, 0); assert.equal(superseded, 1);
+});
+
+test('MVP-01B invalid refinement output cannot create a Run or complete its intent', async () => {
+  const claim = { scope, workItemId: 'w1', sourceRevision: 'r1', originProvider: 'github', originReference: 'owner/demo#4', status: 'running' as const, attemptCount: 1, maxAttempts: 3, nextAttemptAt: new Date().toISOString(), cancellationRequested: false, leaseToken: 'lease-invalid' } satisfies RefinementClaim;
+  let completions = 0; let creates = 0; const failures: string[] = [];
+  const intents: RefinementIntentStore & { completeRefinement(): Promise<void> } = {
+    async claimDue() { return claim; }, async retry(_claim, code) { failures.push(code); },
+    async fail(_claim, code) { failures.push(code); }, async cancel() {}, async supersedeOlder() {},
+    async completeRefinement() { completions++; },
+  };
+  const items: WorkItemStore = { async close() {}, async get() { return item(); }, async getByOrigin() { return item(); }, async ingest() { return item(); } };
+  const workflows: WorkflowStore = { async create() { creates++; throw new Error('Run must not be created'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const worker = new GitHubRefinementWorker(scope, intents, items, new RevisionBoundPlanService(workflows, { async refine() { return { invalid: true } as unknown as ProjectConfiguration; } }), workflows, 'invalid-output-worker');
+  await worker.once(new AbortController().signal);
+  assert.equal(creates, 0); assert.equal(completions, 0);
+  assert.deepEqual(failures, ['REFINEMENT_PERMANENT']);
 });
 
 test('MVP-01B reconciles a committed workflow after the worker loses commit confirmation', async () => {
@@ -173,7 +189,7 @@ test('MVP-01B an old origin workflow does not strand refinement for a newer Work
   let creates = 0; let refinements = 0;
   const intents: RefinementIntentStore = { async claimDue() { return claim; }, async retry() {}, async fail() {}, async cancel() {}, async supersedeOlder() { throw new Error('current intent must remain claimable'); } };
   const items: WorkItemStore = { async close() {}, async get() { return item('r2'); }, async getByOrigin() { return item('r2'); }, async ingest() { return item('r2'); } };
-  const currentPlan = config(); currentPlan.workItem = item('r2').workItem; currentPlan.plan.workItemId = 'w1'; currentPlan.plan.revision = 'plan-r2';
+  const currentPlan = config(); currentPlan.workItem = item('r2').workItem; currentPlan.plan.workItemId = 'w1'; currentPlan.plan.revision = 'plan-r2'; currentPlan.plan.sourceSnapshot = item('r2').digest;
   const oldPlan = config(); oldPlan.workItem = item('r1').workItem; oldPlan.plan.workItemId = 'w1'; oldPlan.plan.revision = 'plan-r1';
   const oldRun = { id: 'w1-r1', version: 0, config: oldPlan, phase: 'awaiting-approval', outcome: { execution: 'pending', verification: 'unverified', objective: 'not-assessed', humanDecision: 'pending' }, approval: { status: 'pending', planRevision: 'plan-r1', policyRevision: oldPlan.plan.policyRevision }, step: { attempts: 0, variants: 0, generation: 0 }, job: null, evidence: [], artifactReferences: [], cancellationRequested: false, simulation: true } as Run;
   const workflows: WorkflowStore = { async create() { creates++; return oldRun; }, async get() { return oldRun; }, async apply() { return oldRun; }, async findById() { return undefined; }, async findByOrigin() { return oldRun; } };

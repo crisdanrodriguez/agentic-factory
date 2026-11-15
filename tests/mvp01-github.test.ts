@@ -104,9 +104,9 @@ test('MVP-01 Codex CLI transport is disabled without explicit local authorizatio
 });
 
 test('MVP-01 Codex CLI refinement pins a dedicated read-only, tool-free session', () => {
-  const args = codexRefinementArgs('/private/tmp/last-message.json', 'gpt-6-sol');
+  const args = codexRefinementArgs('/private/tmp/last-message.json', '/private/tmp/output-schema.json', 'gpt-6-sol');
   assert.deepEqual(args.slice(0, 6), ['exec', '--ephemeral', '--ignore-user-config', '--strict-config', '--sandbox', 'read-only']);
-  assert.deepEqual(args.slice(-4), ['--output-last-message', '/private/tmp/last-message.json', '--model', 'gpt-6-sol']);
+  assert.deepEqual(args.slice(-6), ['--output-schema', '/private/tmp/output-schema.json', '--output-last-message', '/private/tmp/last-message.json', '--model', 'gpt-6-sol']);
   for (const name of DISABLED_CODEX_TOOLS) {
     assert.ok(args.some((value, index) => value === '--disable' && args[index + 1] === name), `${name} must be disabled`);
   }
@@ -457,4 +457,15 @@ test('MVP-01 plan approval is bound to the exact WorkItem revision and policy re
   assert.deepEqual(calls, ['create', 'get', `approve:run-1:${config.plan.revision}:${config.plan.policyRevision}:approve`]);
   await assert.rejects(service.approve(scope, 'run-1', 0, 'changed-plan', config.plan.policyRevision), /does not match/);
   await assert.rejects(service.approve(scope, 'run-1', 0, config.plan.revision, config.plan.policyRevision, { ...item, revision: 'r2' }), /stale/);
+});
+
+test('MVP-01 refinement rejects altered WorkItem content and stale source snapshot', async () => {
+  const base = JSON.parse(readFileSync('fixtures/software-general.json', 'utf8')) as ProjectConfiguration;
+  const scope = { organizationId: 'synthetic-org', projectId: base.workItem.projectId };
+  const workflows: WorkflowStore = { async create() { throw new Error('must not create a Run'); }, async get() { throw new Error('unused'); }, async apply() { throw new Error('unused'); } };
+  const altered = structuredClone(base); altered.workItem.context = 'Changed by model.';
+  const changedItem = new RevisionBoundPlanService(workflows, { async refine() { return altered; } });
+  await assert.rejects(changedItem.refine(scope, base.workItem, base.workItem.revision), /exact WorkItem/);
+  const staleSnapshot = new RevisionBoundPlanService(workflows, { async refine() { return base; } });
+  await assert.rejects(staleSnapshot.refine(scope, base.workItem, base.workItem.revision, undefined, 'durable-digest'), /source snapshot/);
 });

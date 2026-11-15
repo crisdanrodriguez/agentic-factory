@@ -64,7 +64,7 @@
   "plan": {
     "id": "synthetic-ml-plan",
     "revision": "1",
-    "policyRevision": "bootstrap-policy-2",
+    "policyRevision": "bootstrap-policy-3",
     "workItemId": "synthetic-ml-task",
     "sourceSnapshot": "synthetic-source-1",
     "scope": "Specify a bounded CPU comparison and preserve all findings in private artifacts and a report.",

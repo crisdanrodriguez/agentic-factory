@@ -2,6 +2,7 @@ import type { ProjectConfiguration } from './configuration.js';
 import { validateConfiguration } from './configuration.js';
 import type { EvidenceContext, Outcome, VerificationResult } from './contracts.js';
 import { assertRequiredVerification, BOOTSTRAP_CONTRACT_CATALOG, BOOTSTRAP_POLICY } from './policy.js';
+import { assertPlanSafety } from './plan-safety.js';
 
 export interface Scope { organizationId: string; projectId: string }
 export interface Run {
@@ -49,6 +50,7 @@ export function createRun(id: string, input: ProjectConfiguration): Run {
 export function transition(current: Run, command: Command): Run {
   const run = structuredClone(current);
   const require = (condition: boolean, message = 'Invalid workflow transition.'): void => { if (!condition) throw new Error(message); };
+  if (command.type === 'approve' || command.type === 'start' || command.type === 'job-started') assertPlanSafety(run.config);
   if (command.type === 'revise') {
     require(!['running', 'awaiting-job'].includes(run.phase) && !run.cancellationRequested, 'Cancel active work before revising it.');
     const config = validateConfiguration(command.config, BOOTSTRAP_POLICY, BOOTSTRAP_CONTRACT_CATALOG);

@@ -1,5 +1,6 @@
 import type { ProjectConfiguration } from './configuration.js';
 import { evidenceContextSchema, verificationResultSchema, type Capability, type EvidenceContext, type ProjectProfile } from './contracts.js';
+import { assertTrustedVerificationChecks } from './verification-registry.js';
 
 export interface GlobalPolicy {
   readonly revision: string;
@@ -18,7 +19,7 @@ export interface CapabilityCatalog {
 }
 
 export const BOOTSTRAP_POLICY: GlobalPolicy = Object.freeze({
-  revision: 'bootstrap-policy-1',
+  revision: 'bootstrap-policy-2',
   requirePlanApproval: true,
   requireEvidence: true,
   limits: Object.freeze({ maxTechnicalAttempts: 3, maxVariants: 2, maxDurationSeconds: 300, maxMemoryMb: 1024, maxArtifactBytes: 10485760 }),
@@ -83,6 +84,14 @@ export function assertPolicy(config: ProjectConfiguration, policy: GlobalPolicy,
   for (const required of profile.requiredCapabilities) {
     if (!catalog.capabilities.includes(required)) throw new Error(`Missing capability: ${required}. No compatible capability was supplied.`);
   }
+  if (profile.requiredCapabilities.length !== rules.requiredCapabilities.length ||
+      profile.deliverables.length !== rules.deliverables.length ||
+      profile.checks.length !== rules.requiredChecks.length ||
+      config.policy.requiredChecks.length !== rules.requiredChecks.length ||
+      plan.dependencies.length !== 0) {
+    throw new Error('Plan requests capabilities, deliverables, checks, or dependencies outside trusted policy.');
+  }
+  assertTrustedVerificationChecks(config);
   if (profile.id === 'ml-research' && !plan.research) throw new Error('ML research requires a versioned protocol, dataset, and split.');
   if (profile.id === 'ml-research') {
     for (const layer of ['software', 'methodology', 'findings']) {

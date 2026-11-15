@@ -4,12 +4,25 @@ import { createHash } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import type { ProjectConfiguration } from '../../core/configuration.js';
 import { createRun, evidenceContext, transition, type Command, type Run, type Scope } from '../../core/workflow.js';
+import { assertPlanSafety } from '../../core/plan-safety.js';
 import type { WorkflowStore } from '../../ports/workflow-store.js';
 
 export type TransactionEffect = (client: PoolClient, scope: Scope, run: Run) => Promise<void>;
+export type ExternalPlanAuthorization = Readonly<{
+  scope: Scope; workItemId: string; sourceSnapshot: string;
+  profileId: ProjectConfiguration['profile']['id'];
+  capabilities: readonly ProjectConfiguration['profile']['requiredCapabilities'][number][];
+  checks: readonly string[]; deliverables: readonly ProjectConfiguration['profile']['deliverables'][number][];
+  limits: Readonly<ProjectConfiguration['plan']['budget']>;
+  allowExecution: boolean;
+}>;
+
 export class PostgresWorkflowStore implements WorkflowStore {
   readonly pool: Pool;
-  constructor(url: string, private readonly effect?: TransactionEffect) { this.pool = new Pool({ connectionString: url, max: 4 }); }
+  constructor(url: string, private readonly effect?: TransactionEffect,
+    private readonly externalPlanAuthorizations: readonly ExternalPlanAuthorization[] = []) {
+    this.pool = new Pool({ connectionString: url, max: 4 });
+  }
   async close(): Promise<void> { await this.pool.end(); }
   async transaction<T>(operation: (client: PoolClient) => Promise<T>, connection?: PoolClient): Promise<T> {
     const client = connection ?? await this.pool.connect();
@@ -23,6 +36,48 @@ export class PostgresWorkflowStore implements WorkflowStore {
     if (!member?.can_write || (approve && !member.can_approve)) throw new Error('Operation is not authorized for this project.');
     return member.owner_id;
   }
+  private async assertCurrentPlan(client: PoolClient, scope: Scope, run: Run, execution = false): Promise<void> {
+    assertPlanSafety(run.config);
+    if (run.config.workItem.origin.kind !== 'external-ticket') return;
+    const result = await client.query<{
+      id: string; owner_id: string; project_id: string; version: number; objective: string;
+      context: string; source_kind: string; origin_provider: string | null;
+      origin_reference: string | null; digest: string;
+    }>(`SELECT r.id,r.owner_id,r.project_id,r.version,r.objective,r.context,r.source_kind,
+        r.origin_provider,r.origin_reference,r.digest
+      FROM factory.intake_heads h JOIN factory.intake_revisions r
+        ON r.organization_id=h.organization_id AND r.project_id=h.project_id
+        AND r.id=h.id AND r.version=h.version
+      WHERE h.organization_id=$1 AND h.project_id=$2 AND h.id=$3`,
+    [scope.organizationId, scope.projectId, run.config.workItem.id]);
+    const row = result.rows[0];
+    if (!row || row.source_kind !== 'github' || !row.origin_provider || !row.origin_reference) {
+      throw new Error('Current durable WorkItem is unavailable for plan safety validation.');
+    }
+    assertPlanSafety(run.config, {
+      workItem: { id: row.id, ownerId: row.owner_id, projectId: row.project_id,
+        revision: `r${row.version}`, objective: row.objective, context: row.context,
+        origin: { kind: 'external-ticket', provider: row.origin_provider, reference: row.origin_reference } },
+      digest: row.digest,
+    });
+    const matches = this.externalPlanAuthorizations.filter((authorization) =>
+      authorization.scope.organizationId === scope.organizationId &&
+      authorization.scope.projectId === scope.projectId &&
+      authorization.workItemId === row.id && authorization.sourceSnapshot === row.digest &&
+      authorization.profileId === run.config.profile.id);
+    if (matches.length !== 1) throw new Error('External plan lacks one exact owner-approved authorization.');
+    const authorization = matches[0]!;
+    const sameSet = (actual: readonly string[], allowed: readonly string[]) =>
+      actual.length === allowed.length && actual.every((value) => allowed.includes(value));
+    if (!sameSet(run.config.profile.requiredCapabilities, authorization.capabilities) ||
+        !sameSet(run.config.profile.checks.map((check) => check.id), authorization.checks) ||
+        !sameSet(run.config.profile.deliverables, authorization.deliverables) ||
+        Object.entries(authorization.limits).some(([key, limit]) =>
+          run.config.plan.budget[key as keyof ProjectConfiguration['plan']['budget']] > limit) ||
+        (execution && !authorization.allowExecution)) {
+      throw new Error('Plan exceeds owner-approved capabilities or execution constraints.');
+    }
+  }
   async authorizeJob(scope: Scope, context: EvidenceContext): Promise<Scope> {
     const client = await this.pool.connect();
     try {
@@ -32,6 +87,8 @@ export class PostgresWorkflowStore implements WorkflowStore {
         [scope.organizationId, scope.projectId, context.runId]);
       const row = result.rows[0];
       if (!row || !isDeepStrictEqual(evidenceContext(row.state), context)) throw new Error('Synthetic job is outside the authorized context.');
+      await this.assertCurrentPlan(client, scope, row.state, true);
+      if (!['running', 'awaiting-job'].includes(row.state.phase) || row.state.approval.status !== 'approved') throw new Error('Job is not authorized by an approved active Run.');
       return { organizationId: row.organization_id, projectId: row.project_id };
     } finally { client.release(); }
   }
@@ -68,7 +125,9 @@ export class PostgresWorkflowStore implements WorkflowStore {
     await this.authorize(client, scope);
     const result = await client.query<{ state: Run }>('SELECT state FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE', [scope.organizationId, scope.projectId, id]);
     if (!result.rows[0]) throw new Error('Run is unavailable in the authorized scope.');
-    return result.rows[0].state;
+    const run = result.rows[0].state;
+    if (['ready', 'running', 'awaiting-job'].includes(run.phase)) await this.assertCurrentPlan(client, scope, run, true);
+    return run;
   }
   async apply(scope: Scope, id: string, expectedVersion: number, eventId: string, command: Command): Promise<Run> {
     return this.transaction((client) => this.applyInTransaction(client, scope, id, expectedVersion, eventId, command));
@@ -79,6 +138,7 @@ export class PostgresWorkflowStore implements WorkflowStore {
       const record = await client.query<{ state: Run }>('SELECT state FROM factory.runs WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE', key);
       const current = record.rows[0]?.state;
       if (!current) throw new Error('Run is unavailable in the authorized scope.');
+      if (['approve', 'start', 'job-started'].includes(command.type)) await this.assertCurrentPlan(client, scope, current, command.type !== 'approve');
       const digest = createHash('sha256').update(JSON.stringify({ expectedVersion, command })).digest('hex');
       const receipt = await client.query<{ digest: string; result: Run }>('SELECT digest,result FROM factory.receipts WHERE organization_id=$1 AND project_id=$2 AND run_id=$3 AND event_id=$4', [...key, eventId]);
       if (receipt.rows[0]) {

@@ -74,6 +74,7 @@ export class GitHubMvpCoordinator {
   }
 
   async applyFeedback(feedback: GitHubOwnerFeedback, signal?: AbortSignal): Promise<MvpCheckpoint> {
+    void signal;
     const reference = `${this.trust.repositoryFullName}#${feedback.issueNumber}`; feedbackAllowed(feedback, this.trust, reference);
     const checkpoint = await this.checkpoints.load(reference); if (!checkpoint) throw new Error('No current MVP-01 plan exists for this issue.');
     const current = await this.items.get(this.scope, checkpoint.workItem.id);
@@ -86,8 +87,8 @@ export class GitHubMvpCoordinator {
       const run = await this.workflows.apply(this.scope, checkpoint.runId, checkpoint.runVersion, `reject:${reference}:${feedback.planRevision}`, { type: 'reject', planRevision: feedback.planRevision, policyRevision: feedback.policyRevision });
       const updated = { ...checkpoint, runVersion: run.version, approval: 'rejected' as const }; await this.checkpoints.save(updated); return updated;
     }
-    const replacement = await this.plans.refine(this.scope, current.workItem, current.workItem.revision, signal);
-    const run = await this.plans.createPending(this.scope, `${current.workItem.id}-${current.workItem.revision}-revision`, replacement);
-    const updated: MvpCheckpoint = { reference, workItem: current.workItem, plan: replacement, runId: run.id, runVersion: run.version, approval: 'pending' }; await this.checkpoints.save(updated); return updated;
+    // Revision requests need a separately authorized durable intent. Until then,
+    // feedback must not implicitly invoke a model or create another Run.
+    throw new Error('GitHub plan revision feedback is disabled.');
   }
 }

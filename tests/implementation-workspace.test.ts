@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { chmod, lstat, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -87,6 +88,61 @@ test('workspace rejects unsafe source entries, symlinks, mutation, and unreviewe
   const oversized: PinnedSource = { read: async () => [{ path: 'large.txt', content: Buffer.alloc(64 * 1024 + 1) }] };
   await assert.rejects(new ImplementationWorkspaceLifecycle(root, oversized, trustedScope).prepare(scope), /budget/);
   assert.deepEqual(await readdir(root), []);
+}));
+
+test('workspace rejects coordinated staged-file and manifest-digest tampering', async () => temporary(async (directory) => {
+  const source = await repository(directory); const scope = binding(source.commit);
+  const root = join(directory, 'workspaces');
+  const lifecycle = new ImplementationWorkspaceLifecycle(root, new LocalPinnedGitSource(source.path), trustedScope);
+  const first = await lifecycle.prepare(scope);
+  const work = join(root, `run-${first.id}`);
+  const changed = Buffer.from('forged source only\n');
+  await writeFile(join(work, 'src/example.txt'), changed);
+  const manifestPath = join(work, 'manifest.json');
+  const original = await readFile(manifestPath, 'utf8');
+  const manifest = JSON.parse(original) as { entries: { path: string; sha256: string; bytes: number }[] };
+  manifest.entries[0]!.bytes = changed.length;
+  manifest.entries[0]!.sha256 = createHash('sha256').update(changed).digest('hex');
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await assert.rejects(lifecycle.validate(scope), /pinned source/);
+  await assert.rejects(lifecycle.sandboxFiles(scope), /pinned source/);
+  await assert.rejects(new ImplementationWorkspaceLifecycle(root, new LocalPinnedGitSource(source.path), trustedScope).recover(), /pinned source/);
+  await writeFile(join(work, 'src/example.txt'), content);
+  await writeFile(manifestPath, original);
+  assert.deepEqual(await lifecycle.recover(), [first]);
+  assert.deepEqual(await lifecycle.sandboxFiles(scope), [{ path: 'src/example.txt', content: content.toString() }]);
+}));
+
+test('workspace rejects forged, duplicate, removed, and added manifest entries', async () => temporary(async (directory) => {
+  const source = await repository(directory); const scope = binding(source.commit);
+  const root = join(directory, 'workspaces');
+  const lifecycle = new ImplementationWorkspaceLifecycle(root, new LocalPinnedGitSource(source.path), trustedScope);
+  const first = await lifecycle.prepare(scope);
+  const manifestPath = join(root, `run-${first.id}`, 'manifest.json');
+  const original = await readFile(manifestPath, 'utf8');
+  type Entry = { path: string; sha256: string; bytes: number };
+  const base = (JSON.parse(original) as { entries: Entry[] }).entries[0]!;
+  for (const entries of [
+    [{ ...base, sha256: 'f'.repeat(64) }],
+    [{ ...base, bytes: content.length + 1 }],
+    [],
+    [base, base],
+    [base, { path: 'added.txt', bytes: 0, sha256: 'e'.repeat(64) }],
+    [{ ...base, path: 'renamed.txt' }],
+  ]) {
+    const forged = JSON.parse(original) as { entries: Entry[] };
+    forged.entries = entries;
+    await writeFile(manifestPath, JSON.stringify(forged));
+    await assert.rejects(lifecycle.validate(scope), /pinned source/);
+    await assert.rejects(lifecycle.sandboxFiles(scope), /pinned source/);
+    await assert.rejects(lifecycle.recover(), /pinned source/);
+  }
+  const interrupted = JSON.parse(original) as { entries: Entry[]; phase: string };
+  interrupted.phase = 'preparing'; interrupted.entries = [];
+  await writeFile(manifestPath, JSON.stringify(interrupted));
+  await assert.rejects(lifecycle.recover(), /pinned source/);
+  await writeFile(manifestPath, original);
+  assert.deepEqual(await lifecycle.recover(), [first]);
 }));
 
 test('workspace rejects source identity mismatch and cleans interrupted preparation on recovery', async () => temporary(async (directory) => {

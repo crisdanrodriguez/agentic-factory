@@ -95,12 +95,7 @@ export class ImplementationWorkspaceLifecycle {
     if (this.id(manifest.binding) !== id) throw new Error('Workspace identity mismatch.');
     return manifest;
   }
-  async prepare(input: unknown): Promise<WorkspaceInspection> {
-    const binding = implementationWorkspaceSchema.parse(input); this.authorize(binding);
-    await this.rootReady();
-    const id = this.id(binding); const directory = this.path(id);
-    try { await lstat(directory); return this.validate(binding); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  private async trustedFiles(binding: ImplementationWorkspaceBinding): Promise<{ files: SourceFile[]; entries: Manifest['entries'] }> {
     const files = await this.source.read(binding);
     if (files.length > 64 || files.some((file) => file.content.length > 64 * 1024 ||
         !Buffer.from(file.content.toString('utf8')).equals(file.content)) ||
@@ -109,9 +104,24 @@ export class ImplementationWorkspaceLifecycle {
     const paths = files.map((file) => file.path);
     if (new Set(paths).size !== paths.length || paths.some((path) => !relativePath.safeParse(path).success || path === 'manifest.json'))
       throw new Error('Pinned source paths are unsafe.');
+    const entries = files.map((file) => ({ path: file.path, sha256: sha256(file.content), bytes: file.content.length }));
+    return { files, entries };
+  }
+  private assertPinnedEntries(manifest: Manifest, entries: Manifest['entries']): void {
+    const ordered = (items: Manifest['entries']) => [...items].sort((a, b) => a.path.localeCompare(b.path));
+    if (new Set(manifest.entries.map((entry) => entry.path)).size !== manifest.entries.length ||
+        JSON.stringify(ordered(manifest.entries)) !== JSON.stringify(ordered(entries)))
+      throw new Error('Workspace manifest differs from pinned source.');
+  }
+  async prepare(input: unknown): Promise<WorkspaceInspection> {
+    const binding = implementationWorkspaceSchema.parse(input); this.authorize(binding);
+    await this.rootReady();
+    const id = this.id(binding); const directory = this.path(id);
+    try { await lstat(directory); return this.validate(binding); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const { files, entries } = await this.trustedFiles(binding);
     await mkdir(directory, { mode: 0o700 });
     try {
-      const entries: Manifest['entries'] = files.map((file) => ({ path: file.path, sha256: sha256(file.content), bytes: file.content.length }));
       await writePrivate(join(directory, 'manifest.json'), JSON.stringify({ binding, entries, phase: 'preparing' } satisfies Manifest));
       for (const file of files) {
         const parts = file.path.split('/'); let parent = directory;
@@ -135,6 +145,7 @@ export class ImplementationWorkspaceLifecycle {
     const id = this.id(binding); const manifest = await this.read(id);
     if (manifest.phase !== 'prepared') throw new Error('Workspace preparation is incomplete.');
     if (JSON.stringify(manifest.binding) !== JSON.stringify(binding)) throw new Error('Workspace binding changed.');
+    this.assertPinnedEntries(manifest, (await this.trustedFiles(binding)).entries);
     const expected = new Set(['manifest.json']);
     for (const entry of manifest.entries) {
       const parts = entry.path.split('/'); let current = this.path(id);
@@ -168,13 +179,10 @@ export class ImplementationWorkspaceLifecycle {
   async sandboxFiles(input: unknown): Promise<{ path: string; content: string }[]> {
     const binding = implementationWorkspaceSchema.parse(input); this.authorize(binding); await this.validate(binding);
     const manifest = await this.read(this.id(binding));
-    const files: { path: string; content: string }[] = [];
-    for (const entry of manifest.entries) {
-      const content = await readPrivate(join(this.path(this.id(binding)), entry.path), 64 * 1024);
-      if (Buffer.byteLength(content) !== entry.bytes || sha256(content) !== entry.sha256) throw new Error('Workspace source changed.');
-      files.push({ path: entry.path, content });
-    }
-    return files;
+    const trusted = await this.trustedFiles(binding);
+    this.assertPinnedEntries(manifest, trusted.entries);
+    // Transfer immutable pinned blobs, never bytes read back from mutable staging files.
+    return trusted.files.map((file) => ({ path: file.path, content: file.content.toString('utf8') }));
   }
   async cleanup(input: unknown): Promise<void> {
     const binding = implementationWorkspaceSchema.parse(input); this.authorize(binding); await this.rootReady();
@@ -191,6 +199,7 @@ export class ImplementationWorkspaceLifecycle {
       if (!/^run-[a-f0-9]{64}$/.test(name)) throw new Error('Unknown workspace resource requires operator review.');
       const manifest = await this.read(name.slice(4));
       this.authorize(manifest.binding);
+      this.assertPinnedEntries(manifest, (await this.trustedFiles(manifest.binding)).entries);
       if (manifest.phase === 'preparing') { await this.cleanup(manifest.binding); continue; }
       results.push(await this.validate(manifest.binding));
     }
